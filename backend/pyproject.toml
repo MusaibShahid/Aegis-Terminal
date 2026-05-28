@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=64.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+    "ignore::PendingDeprecationWarning",
+]
+markers = [
+    "asyncio: mark test as async",
+]
+
+[tool.coverage.run]
+source = ["execution", "connectors", "analytics", "indicators", "alerts", "storage", "strategies", "replay", "aggregation"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "def __str__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "logger.exception",
+    "logger.error",
+    "@abstractmethod",
+    "if TYPE_CHECKING:",
+]
+show_missing = true
+skip_covered = false
+fail_under = 0
+sort = "Cover"
+
+[tool.coverage.html]
+directory = "coverage_html"

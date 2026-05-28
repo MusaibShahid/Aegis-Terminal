@@ -44,7 +44,6 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
     []
   );
 
-  // Defer init until container has positive width (handles hidden panes)
   useEffect(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
@@ -61,11 +60,36 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
       const chart = createChart(container, {
         width: container.clientWidth || 600,
         height,
-        layout: { background: { color: "#0f1118" }, textColor: "#9ca3af" },
-        grid: { vertLines: { color: "#1a1d2e" }, horzLines: { color: "#1a1d2e" } },
-        crosshair: { mode: 0 },
-        timeScale: { borderColor: "#2a2d3e", timeVisible: true, secondsVisible: false },
-        rightPriceScale: { borderColor: "#2a2d3e" },
+        layout: {
+          background: { color: "#0a0c14" },
+          textColor: "#6b7280",
+          fontSize: 10,
+          fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
+        },
+        grid: {
+          vertLines: { color: "rgba(255,255,255,0.03)" },
+          horzLines: { color: "rgba(255,255,255,0.03)" },
+        },
+        crosshair: {
+          mode: 0,
+          vertLine: { color: "rgba(255,255,255,0.15)", width: 1, style: 2, labelBackgroundColor: "#1e293b" },
+          horzLine: { color: "rgba(255,255,255,0.15)", width: 1, style: 2, labelBackgroundColor: "#1e293b" },
+        },
+        timeScale: {
+          borderColor: "rgba(255,255,255,0.06)",
+          timeVisible: true,
+          secondsVisible: false,
+          tickMarkFormatter: (time: number) => {
+            const date = new Date(time * 1000);
+            const h = date.getHours().toString().padStart(2, "0");
+            const m = date.getMinutes().toString().padStart(2, "0");
+            return `${h}:${m}`;
+          },
+        },
+        rightPriceScale: {
+          borderColor: "rgba(255,255,255,0.06)",
+          borderVisible: true,
+        },
       });
 
       const series = chart.addCandlestickSeries({
@@ -75,12 +99,18 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
         borderUpColor: "#22c55e",
         wickDownColor: "#ef4444",
         wickUpColor: "#22c55e",
+        borderVisible: false,
+        wickVisible: true,
+        priceFormat: {
+          type: "price",
+          precision: 2,
+          minMove: 0.01,
+        },
       } as CandlestickSeriesPartialOptions);
 
       chartRef.current = chart;
       seriesRef.current = series;
 
-      // Seed candles from ref (avoids race between init and data arrival)
       const currentCandles = candlesRef.current;
       if (currentCandles.length > 0) {
         series.setData(
@@ -94,7 +124,6 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
         );
       }
 
-      // Seed indicator lines from ref (same race fix)
       const currentLines = indicatorLinesRef.current;
       if (currentLines) {
         for (const line of currentLines) {
@@ -145,27 +174,27 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
     };
   }, [height, onCrosshairMove, resizeKey]);
 
-  // Container width changes
   useEffect(() => {
     chartRef.current?.applyOptions({ width: containerWidth || chartRef.current?.options()?.width || 600 });
   }, [containerWidth]);
 
-  // Live candle updates
   useEffect(() => {
-    if (seriesRef.current && candles.length > 0) {
-      seriesRef.current.setData(
-        candles.map((c) => ({
-          time: (c.time / 1000) as UTCTimestamp,
-          open: c.open,
-          high: c.high,
-          low: c.low,
-          close: c.close,
-        }))
-      );
+    if (!seriesRef.current) return;
+    if (candles.length === 0) {
+      seriesRef.current.setData([]);
+      return;
     }
+    seriesRef.current.setData(
+      candles.map((c) => ({
+        time: (c.time / 1000) as UTCTimestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }))
+    );
   }, [candles]);
 
-  // Indicator lines
   useEffect(() => {
     if (!chartRef.current) return;
     const chart = chartRef.current;
@@ -200,5 +229,11 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
 
   useAutoFit(chartRef, seriesRef, candles);
 
-  return <div ref={containerRef} className="w-full flex-1 min-h-0" />;
+  return (
+    <div
+      ref={containerRef}
+      className="w-full flex-1 min-h-0"
+      style={{ background: "linear-gradient(180deg, rgba(10,12,20,1) 0%, rgba(15,17,24,1) 100%)" }}
+    />
+  );
 });

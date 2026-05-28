@@ -8,6 +8,7 @@ interface MarketState {
   addCandle: (symbol: string, interval: string, candle: Candle) => void;
   updateQuote: (symbol: string, quote: Quote) => void;
   setCandles: (symbol: string, interval: string, candles: Candle[]) => void;
+  clearCandles: (keys: string[]) => void;
   clear: () => void;
 }
 
@@ -33,6 +34,13 @@ export const useMarketStore = create<MarketState>((set) => ({
     set((s) => ({
       candles: { ...s.candles, [`${symbol}:${interval}`]: candles },
     })),
+
+  clearCandles: (keys) =>
+    set((s) => {
+      const next = { ...s.candles };
+      for (const k of keys) delete next[k];
+      return { candles: next };
+    }),
 
   clear: () => set({ candles: {}, quotes: {} }),
 }));

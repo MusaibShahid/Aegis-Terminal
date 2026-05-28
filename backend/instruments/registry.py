@@ -15,8 +15,8 @@ INSTRUMENTS: list[dict[str, Any]] = [
     {"symbol": "DOTUSDT", "display_name": "Polkadot", "market_type": "crypto", "source": "binance", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
     {"symbol": "LINKUSDT", "display_name": "Chainlink", "market_type": "crypto", "source": "binance", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
     # Metals (Binance pairs — live data available)
-    {"symbol": "XAUUSDT", "display_name": "Gold (Binance)", "market_type": "metal", "source": "binance", "tick_size": 0.01, "timezone": "UTC", "precision": 2},
-    {"symbol": "XAGUSDT", "display_name": "Silver (Binance)", "market_type": "metal", "source": "binance", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
+    {"symbol": "XAUUSDT", "display_name": "Gold", "market_type": "metal", "source": "mt5", "tick_size": 0.01, "timezone": "UTC", "precision": 2},
+    {"symbol": "XAGUSDT", "display_name": "Silver", "market_type": "metal", "source": "mt5", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
     # Metals (MT5 — requires MT5 bridge; mapped to Binance via symbol mapper)
     {"symbol": "XAUUSD", "display_name": "Gold", "market_type": "metal", "source": "mt5", "tick_size": 0.01, "timezone": "UTC", "precision": 2},
     {"symbol": "XAGUSD", "display_name": "Silver", "market_type": "metal", "source": "mt5", "tick_size": 0.001, "timezone": "UTC", "precision": 3},

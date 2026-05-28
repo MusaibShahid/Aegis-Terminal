@@ -114,5 +114,70 @@ async def _ensure_tables(db: aiosqlite.Connection) -> None:
             closed_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS paper_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            balance REAL DEFAULT 10000.0,
+            initial_balance REAL DEFAULT 10000.0,
+            total_pnl REAL DEFAULT 0,
+            total_trades INTEGER DEFAULT 0,
+            wins INTEGER DEFAULT 0,
+            losses INTEGER DEFAULT 0,
+            slippage_bps REAL DEFAULT 1.0,
+            fee_model TEXT DEFAULT 'exchange',
+            taker_fee_bps REAL DEFAULT 10.0,
+            maker_fee_bps REAL DEFAULT 8.0,
+            total_fees_paid REAL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS paper_positions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            entry_price REAL NOT NULL,
+            quantity REAL NOT NULL,
+            stop_loss REAL,
+            take_profit REAL,
+            pnl REAL DEFAULT 0,
+            pnl_pct REAL DEFAULT 0,
+            status TEXT DEFAULT 'open',
+            opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            closed_at TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS paper_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id INTEGER,
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            order_type TEXT NOT NULL,
+            price REAL,
+            stop_price REAL,
+            quantity REAL NOT NULL,
+            filled_price REAL,
+            filled_quantity REAL DEFAULT 0,
+            status TEXT DEFAULT 'open',
+            slippage REAL,
+            reason TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            filled_at TIMESTAMP,
+            FOREIGN KEY (position_id) REFERENCES paper_positions(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS paper_closed_trades (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            side TEXT NOT NULL,
+            entry_price REAL NOT NULL,
+            exit_price REAL,
+            quantity REAL NOT NULL,
+            pnl REAL,
+            pnl_pct REAL,
+            entry_reason TEXT,
+            exit_reason TEXT,
+            opened_at TIMESTAMP,
+            closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     await db.commit()

@@ -12,6 +12,8 @@ export class WSClient {
   private messageHandlers = new Map<string, Set<MessageHandler>>();
   private candleHandlers = new Map<string, Set<CandleHandler>>();
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private pendingQueue: Record<string, unknown>[] = [];
+  private lastSubscribe: { symbols: string[]; intervals: string[] } | null = null;
   public onOpen: (() => void) | null = null;
 
   constructor(channel: string) {
@@ -25,6 +27,15 @@ export class WSClient {
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
+      // Drain pending queue
+      for (const msg of this.pendingQueue) {
+        this.ws?.send(JSON.stringify(msg));
+      }
+      this.pendingQueue = [];
+      // Re-subscribe last subscription on reconnect
+      if (this.lastSubscribe) {
+        this.ws?.send(JSON.stringify({ type: "subscribe", ...this.lastSubscribe }));
+      }
       this.startHeartbeat();
       this.onOpen?.();
     };
@@ -71,10 +82,14 @@ export class WSClient {
   send(msg: Record<string, unknown>) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
+    } else {
+      // Queue for delivery once connected
+      this.pendingQueue.push(msg);
     }
   }
 
   subscribe(symbols: string[], intervals: string[]) {
+    this.lastSubscribe = { symbols, intervals };
     this.send({ type: "subscribe", symbols, intervals });
   }
 

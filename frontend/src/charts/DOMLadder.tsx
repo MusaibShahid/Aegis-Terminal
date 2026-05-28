@@ -1,5 +1,4 @@
 import { useDOMStore } from "../stores/useDOMStore";
-import { formatPrice } from "../utils/format";
 
 interface Props {
   symbol: string;
@@ -7,57 +6,59 @@ interface Props {
 
 export function DOMLadder({ symbol }: Props) {
   const depth = useDOMStore((s) => s.depth[symbol]);
-  if (!depth) return <div className="text-xs text-gray-500 p-2">Waiting for depth data...</div>;
 
-  const maxBid = Math.max(...depth.bids.map((b) => b.volume), 1);
-  const maxAsk = Math.max(...depth.asks.map((a) => a.volume), 1);
-  const maxVol = Math.max(maxBid, maxAsk);
-  const spread = depth.asks.length && depth.bids.length
-    ? depth.asks[0].price - depth.bids[0].price
-    : 0;
-  const mid = depth.asks.length && depth.bids.length
-    ? (depth.asks[0].price + depth.bids[0].price) / 2
+  if (!depth || (!depth.bids.length && !depth.asks.length)) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-600 text-xs">
+        Loading depth data...
+      </div>
+    );
+  }
+
+  const maxVol = Math.max(
+    ...depth.bids.map((b) => b.volume),
+    ...depth.asks.map((a) => a.volume),
+    1
+  );
+
+  const spread = depth.asks.length > 0 && depth.bids.length > 0
+    ? ((depth.asks[0].price - depth.bids[0].price) / depth.bids[0].price) * 100
     : 0;
 
   return (
-    <div className="h-full flex flex-col text-xs font-mono">
-      {/* Header */}
-      <div className="flex items-center justify-between px-2 py-1 bg-surface-alt border-b border-surface-border shrink-0">
-        <span className="text-gray-400">DOM — {symbol}</span>
-        <span className="text-gray-500">
-          Spread: {formatPrice(spread, 2)} | Mid: {formatPrice(mid, 2)}
-        </span>
-      </div>
+    <div className="h-full overflow-y-auto p-2">
+      <div className="text-[10px] font-mono space-y-px">
+        {/* Header */}
+        <div className="flex items-center justify-between text-[9px] text-gray-600 uppercase tracking-wider px-1 pb-1 border-b border-surface-border/30 mb-1">
+          <span>Price</span>
+          <span>Volume</span>
+          <span>Total</span>
+        </div>
 
-      {/* Asks */}
-      <div className="flex-1 overflow-y-auto flex flex-col-reverse">
-        {depth.asks.slice(-15).map((a, i) => (
-          <div key={`ask-${i}`} className="flex items-center h-5 px-2 relative">
-            <div
-              className="absolute right-0 top-0 h-full bg-accent-red/15"
-              style={{ width: `${(a.volume / maxVol) * 100}%` }}
-            />
-            <span className="relative z-10 text-accent-red w-24 text-right">{formatPrice(a.price, 2)}</span>
-            <span className="relative z-10 text-gray-400 w-16 text-right ml-auto">{a.volume.toFixed(4)}</span>
+        {/* Asks (reversed so lowest ask is at bottom) */}
+        {[...depth.asks].reverse().map((ask, i) => (
+          <div key={i} className="flex items-center justify-between px-1 py-0.5 relative group hover:bg-glass-white-hover rounded transition-colors">
+            <div className="absolute right-0 top-0 bottom-0 bg-accent-red/10 rounded" style={{ width: `${(ask.volume / maxVol) * 100}%` }} />
+            <span className="text-accent-red font-mono text-[10px] tabular-nums relative z-10">{ask.price.toFixed(2)}</span>
+            <span className="text-gray-400 font-mono text-[10px] tabular-nums relative z-10">{ask.volume.toFixed(4)}</span>
+            <span className="text-gray-600 font-mono text-[9px] tabular-nums relative z-10">{(ask.volume * ask.price).toFixed(2)}</span>
           </div>
         ))}
-      </div>
 
-      {/* Mid line */}
-      <div className="border-t border-b border-surface-border py-0.5 text-center text-gray-500 bg-surface-alt text-[10px]">
-        {formatPrice(mid, 2)}
-      </div>
+        {/* Spread */}
+        {depth.asks.length > 0 && depth.bids.length > 0 && (
+          <div className="text-center text-[9px] text-gray-600 py-1 border-y border-surface-border/30 my-0.5 font-mono">
+            Spread: {spread.toFixed(3)}%
+          </div>
+        )}
 
-      {/* Bids */}
-      <div className="flex-1 overflow-y-auto">
-        {depth.bids.slice(0, 15).map((b, i) => (
-          <div key={`bid-${i}`} className="flex items-center h-5 px-2 relative">
-            <div
-              className="absolute left-0 top-0 h-full bg-accent-green/15"
-              style={{ width: `${(b.volume / maxVol) * 100}%` }}
-            />
-            <span className="relative z-10 text-accent-green w-24">{formatPrice(b.price, 2)}</span>
-            <span className="relative z-10 text-gray-400 w-16 text-right ml-auto">{b.volume.toFixed(4)}</span>
+        {/* Bids */}
+        {depth.bids.map((bid, i) => (
+          <div key={i} className="flex items-center justify-between px-1 py-0.5 relative group hover:bg-glass-white-hover rounded transition-colors">
+            <div className="absolute right-0 top-0 bottom-0 bg-accent-green/10 rounded" style={{ width: `${(bid.volume / maxVol) * 100}%` }} />
+            <span className="text-accent-green font-mono text-[10px] tabular-nums relative z-10">{bid.price.toFixed(2)}</span>
+            <span className="text-gray-400 font-mono text-[10px] tabular-nums relative z-10">{bid.volume.toFixed(4)}</span>
+            <span className="text-gray-600 font-mono text-[9px] tabular-nums relative z-10">{(bid.volume * bid.price).toFixed(2)}</span>
           </div>
         ))}
       </div>

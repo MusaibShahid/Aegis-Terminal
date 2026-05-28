@@ -11,6 +11,7 @@ DEPENDENCY_MATRIX: dict[str, list[str]] = {
     "vpvr": ["volume_aggregation"],
     "backtest": ["strategy_engine", "candle_history"],
     "bot": ["strategy_engine", "risk_engine"],
+    "paper_trading": ["tick_engine"],
 }
 
 
@@ -29,6 +30,7 @@ class DependencyManager:
             "strategy_engine": False,
             "candle_history": False,
             "risk_engine": False,
+            "paper_trading": False,
         }
 
     def set_ready(self, component: str, ready: bool = True) -> None:
@@ -48,6 +50,10 @@ class DependencyManager:
         for feature in DEPENDENCY_MATRIX:
             ready, missing = self.feature_ready(feature)
             result[feature] = {"ready": ready, "missing": missing}
+        # Also expose raw component status
+        for component, ready in self._status.items():
+            if component not in result:
+                result[component] = {"ready": ready, "missing": []}
         return result
 
 

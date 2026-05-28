@@ -8,6 +8,7 @@ import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from websocket.manager import manager
+from execution.paper_trading import PaperTradingEngine
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -103,6 +104,86 @@ async def handle_message(ws: WebSocket, channel: str, msg: dict[str, Any]) -> No
     elif msg_type == "alert_create":
         alert_data = msg.get("alert", {})
         await manager.send_to(ws, {"type": "alert_created", "alert": alert_data})
+
+    # --- Paper Trading ---
+
+    elif msg_type == "paper_create_order":
+        engine: PaperTradingEngine | None = getattr(manager, "paper_trading", None)
+        if not engine:
+            await manager.send_to(ws, {"type": "paper_error", "message": "Engine not available"})
+            return
+        result = await engine.create_order(
+            symbol=msg.get("symbol", ""),
+            side=msg.get("side", "buy"),
+            order_type=msg.get("order_type", "market"),
+            quantity=msg.get("quantity", 0.0),
+            price=msg.get("price"),
+            stop_price=msg.get("stop_price"),
+            reason=msg.get("reason"),
+        )
+        if "error" in result:
+            await manager.send_to(ws, {"type": "paper_error", "message": result["error"]})
+        else:
+            await manager.send_to(ws, {"type": "paper_order_created", "order": result})
+
+    elif msg_type == "paper_cancel_order":
+        engine: PaperTradingEngine | None = getattr(manager, "paper_trading", None)
+        if not engine:
+            await manager.send_to(ws, {"type": "paper_error", "message": "Engine not available"})
+            return
+        result = await engine.cancel_order(msg.get("order_id", 0))
+        if result:
+            await manager.send_to(ws, {"type": "paper_order_cancelled", "order": result})
+        else:
+            await manager.send_to(ws, {"type": "paper_error", "message": "Order not found"})
+
+    elif msg_type == "paper_close_position":
+        engine: PaperTradingEngine | None = getattr(manager, "paper_trading", None)
+        if not engine:
+            await manager.send_to(ws, {"type": "paper_error", "message": "Engine not available"})
+            return
+        result = await engine.close_position(
+            msg.get("position_id", 0),
+            exit_price=msg.get("exit_price"),
+            reason=msg.get("reason"),
+        )
+        if result:
+            await manager.send_to(ws, {"type": "paper_position_closed", "position": result})
+        else:
+            await manager.send_to(ws, {"type": "paper_error", "message": "Position not found"})
+
+    elif msg_type == "paper_get_snapshot":
+        engine: PaperTradingEngine | None = getattr(manager, "paper_trading", None)
+        if engine:
+            await manager.send_to(ws, {"type": "paper_snapshot", **engine.snapshot()})
+
+    elif msg_type == "paper_get_settings":
+        engine: PaperTradingEngine | None = getattr(manager, "paper_trading", None)
+        if engine:
+            await manager.send_to(ws, {"type": "paper_settings", **engine.settings})
+
+    elif msg_type == "paper_update_settings":
+        engine: PaperTradingEngine | None = getattr(manager, "paper_trading", None)
+        if not engine:
+            await manager.send_to(ws, {"type": "paper_error", "message": "Engine not available"})
+            return
+        result = await engine.update_settings(
+            initial_balance=msg.get("initial_balance"),
+            slippage_bps=msg.get("slippage_bps"),
+            fee_model=msg.get("fee_model"),
+            taker_fee_bps=msg.get("taker_fee_bps"),
+            maker_fee_bps=msg.get("maker_fee_bps"),
+        )
+        if "error" in result:
+            await manager.send_to(ws, {"type": "paper_error", "message": result["error"]})
+        else:
+            await manager.send_to(ws, {"type": "paper_settings_updated", "settings": result})
+
+    elif msg_type == "paper_reset":
+        engine: PaperTradingEngine | None = getattr(manager, "paper_trading", None)
+        if engine:
+            await engine.reset()
+            await manager.send_to(ws, {"type": "paper_reset_done", **engine.stats})
 
     else:
         await manager.send_to(ws, {"error": f"unknown_type: {msg_type}"})

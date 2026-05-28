@@ -1,112 +1,94 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useReplayStore } from "../stores/useReplayStore";
 
-const SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSD", "EURUSD", "GBPUSD"];
-
 export function ReplayPanel() {
+  const { isPlaying, speed, currentIndex, totalCandles, startReplay, stopReplay, setSpeed } = useReplayStore();
+
   const [symbol, setSymbol] = useState("BTCUSDT");
   const [interval, setInterval] = useState("1m");
-  const playing = useReplayStore((s) => s.playing);
-  const speed = useReplayStore((s) => s.speed);
-  const progress = useReplayStore((s) => s.progress);
-  const loaded = useReplayStore((s) => s.loaded);
-  const loading = useReplayStore((s) => s.loading);
-  const error = useReplayStore((s) => s.error);
-  const setPlaying = useReplayStore((s) => s.setPlaying);
-  const setSpeed = useReplayStore((s) => s.setSpeed);
-  const stepForward = useReplayStore((s) => s.stepForward);
-  const loadReplay = useReplayStore((s) => s.loadReplay);
-  const reset = useReplayStore((s) => s.reset);
+
+  const handleToggle = useCallback(() => {
+    if (isPlaying) {
+      stopReplay();
+    } else {
+      startReplay(symbol, interval);
+    }
+  }, [isPlaying, symbol, interval, startReplay, stopReplay]);
+
+  const progress = totalCandles > 0 ? (currentIndex / totalCandles) * 100 : 0;
 
   return (
-    <div className="flex flex-col h-full text-xs">
-      <div className="p-2 space-y-2">
-        {/* Symbol + Interval selectors */}
+    <div className="flex flex-col h-full text-xs p-2 space-y-2">
+      {/* Controls */}
+      <div className="glass-card rounded-lg p-2.5 space-y-1.5">
         <div className="flex gap-1">
-          <select
-            className="flex-1 bg-surface border border-surface-border rounded px-1 py-1 text-white text-[10px]"
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-          >
-            {SYMBOLS.map((s) => <option key={s}>{s}</option>)}
+          <input className="flex-1 trade-input text-xs font-mono" value={symbol} onChange={(e) => setSymbol(e.target.value.toUpperCase())} placeholder="Symbol" />
+          <select className="trade-select w-16" value={interval} onChange={(e) => setInterval(e.target.value)}>
+            {["1m", "5m", "15m", "1h", "4h", "1d"].map((iv) => (
+              <option key={iv} value={iv}>{iv}</option>
+            ))}
           </select>
-          <select
-            className="w-14 bg-surface border border-surface-border rounded px-1 py-1 text-white text-[10px]"
-            value={interval}
-            onChange={(e) => setInterval(e.target.value)}
-          >
-            {["1m", "5m", "15m", "1h"].map((iv) => <option key={iv}>{iv}</option>)}
-          </select>
-          <button
-            className="bg-accent-blue text-white px-2 rounded text-[10px] hover:bg-accent-blue/80 disabled:opacity-50"
-            disabled={loading}
-            onClick={() => loadReplay(symbol, interval)}
-          >
-            {loading ? "..." : "Load"}
-          </button>
         </div>
 
-        {error && <div className="text-accent-red text-[10px]">{error}</div>}
+        <button
+          className={`w-full btn-primary transition-colors ${
+            isPlaying
+              ? "bg-accent-red/15 text-accent-red border border-accent-red/25 hover:bg-accent-red/25"
+              : "bg-accent-green/15 text-accent-green border border-accent-green/25 hover:bg-accent-green/25"
+          }`}
+          onClick={handleToggle}
+        >
+          <span className="flex items-center justify-center gap-1.5">
+            <span className={`w-2 h-2 rounded-full ${isPlaying ? "bg-accent-red" : "bg-accent-green"}`} />
+            {isPlaying ? "Stop" : "Start"} Replay
+          </span>
+        </button>
+      </div>
 
-        {/* Controls */}
-        <div className="flex items-center gap-2">
-          <button
-            className={`w-8 h-8 flex items-center justify-center rounded text-sm ${
-              playing ? "bg-accent-yellow text-black" : "bg-accent-green text-white"
-            } ${!loaded ? "opacity-30 cursor-not-allowed" : ""}`}
-            disabled={!loaded}
-            onClick={() => setPlaying(!playing)}
-          >
-            {playing ? "⏸" : "▶"}
-          </button>
-          <button
-            className={`w-8 h-8 flex items-center justify-center rounded bg-surface-alt text-gray-300 hover:text-white ${!loaded ? "opacity-30 cursor-not-allowed" : ""}`}
-            disabled={!loaded}
-            onClick={reset}
-          >
-            ⏹
-          </button>
-          <button
-            className={`w-8 h-8 flex items-center justify-center rounded bg-surface-alt text-gray-300 hover:text-white text-sm ${!loaded ? "opacity-30 cursor-not-allowed" : ""}`}
-            disabled={!loaded}
-            onClick={() => stepForward(10)}
-            title="Step forward 10 ticks"
-          >
-            ⏭
-          </button>
-        </div>
-
-        {/* Speed */}
-        <div className="space-y-1">
-          <div className="flex justify-between text-gray-400">
-            <span>Speed</span>
-            <span className="text-white">{speed}x</span>
+      {/* Playback controls */}
+      <div className="glass-card rounded-lg p-2.5 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] text-gray-600 uppercase tracking-wider font-semibold">Playback</span>
+          <div className="flex items-center gap-1">
+            {[0.5, 1, 2, 5, 10].map((s) => (
+              <button
+                key={s}
+                className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+                  speed === s
+                    ? "bg-accent-blue/15 text-accent-blue"
+                    : "text-gray-600 hover:text-white hover:bg-glass-white-hover"
+                }`}
+                onClick={() => setSpeed(s)}
+              >
+                {s}x
+              </button>
+            ))}
           </div>
-          <input
-            type="range"
-            min="0.1"
-            max="100"
-            step="0.1"
-            value={speed}
-            onChange={(e) => setSpeed(parseFloat(e.target.value))}
-            className="w-full h-1 bg-surface-alt rounded-full appearance-none cursor-pointer accent-accent-blue"
-          />
         </div>
 
-        {/* Progress */}
+        {/* Progress bar */}
         <div className="space-y-1">
-          <div className="flex justify-between text-gray-400">
-            <span>Progress</span>
-            <span className="text-white">{(progress * 100).toFixed(0)}%</span>
-          </div>
-          <div className="w-full h-1 bg-surface-alt rounded-full overflow-hidden">
+          <div className="h-1.5 bg-surface-border rounded-full overflow-hidden">
             <div
-              className="h-full bg-accent-blue transition-all duration-300"
-              style={{ width: `${progress * 100}%` }}
+              className="h-full bg-accent-blue rounded-full transition-all duration-200"
+              style={{ width: `${progress}%` }}
             />
+          </div>
+          <div className="flex justify-between text-[9px] text-gray-600 font-mono">
+            <span>Candle {currentIndex}/{totalCandles}</span>
+            <span>{progress.toFixed(0)}%</span>
           </div>
         </div>
       </div>
+
+      {!isPlaying && totalCandles === 0 && (
+        <div className="flex flex-col items-center justify-center flex-1 text-gray-600 gap-2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-40">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          <span className="text-xs">Select a symbol to replay</span>
+        </div>
+      )}
     </div>
   );
 }

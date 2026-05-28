@@ -145,6 +145,7 @@ export interface PaneConfig {
   symbol: string;
   interval: string;
   indicators: (IndicatorOverlay | IndicatorOscillator)[];
+  oscillators: OscillatorConfig[];
   chartType: "candle" | "footprint" | "delta" | "depth" | "heatmap" | "vpvr";
   linked: boolean;
 }
@@ -190,6 +191,15 @@ export interface CandleMeta {
   is_final: boolean;
 }
 
+// --- Oscillator Sub-Panel Config ---
+
+export interface OscillatorConfig {
+  id: string;
+  type: "volume" | "macd" | "rsi" | "stochastic" | "cci" | "williams_r" | "atr" | "obv" | "cmf";
+  params: Record<string, number>;
+  color?: string;
+}
+
 // --- Drawings ---
 
 export type DrawingTool =
@@ -205,12 +215,19 @@ export type DrawingTool =
   | "circle"
   | "eraser";
 
+/** A point on the chart expressed in chart coordinates (time in ms, price). */
+export interface DrawingPoint {
+  time: number;
+  price: number;
+}
+
 export interface Drawing {
   id?: string;
   _serverId?: number;
   paneId: string;
   tool: DrawingTool;
-  points: { x: number; y: number }[];
+  /** Points in chart coordinates: {time: ms_timestamp, price}. */
+  points: DrawingPoint[];
   color?: string;
   text?: string;
   createdAt?: number;

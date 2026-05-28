@@ -1,52 +1,52 @@
 import { useFootprintStore } from "../stores/useFootprintStore";
-import { formatPrice } from "../utils/format";
 
 interface Props {
   symbol: string;
 }
 
 export function FootprintChart({ symbol }: Props) {
-  const fp = useFootprintStore((s) => s.footprint[symbol]);
-  if (!fp || !fp.levels?.length) {
-    return <div className="text-xs text-gray-500 p-2">Waiting for footprint data...</div>;
+  const footprint = useFootprintStore((s) => s.footprint[symbol]);
+
+  if (!footprint || !footprint.levels || footprint.levels.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-600 text-xs">
+        Loading footprint data...
+      </div>
+    );
   }
 
-  const maxVol = fp.max_volume || 1;
+  const maxVolume = Math.max(...footprint.levels.map((l: any) => Math.max(l.buyVolume || 0, l.sellVolume || 0)), 1);
 
   return (
-    <div className="h-full flex flex-col text-[10px] font-mono">
-      <div className="flex items-center gap-4 px-2 py-1 bg-surface-alt border-b border-surface-border shrink-0 text-xs">
-        <span className="text-gray-400">Footprint — {symbol}</span>
-        <span className="text-accent-green">Bid</span>
-        <span className="text-accent-red">Ask</span>
-        <span className="text-accent-yellow">Delta</span>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        {fp.levels.slice(-25).map((lvl, i) => (
-          <div
-            key={i}
-            className="flex items-center h-[18px] px-1 border-b border-surface-border/30"
-          >
-            <span className="w-20 text-right text-gray-300">{formatPrice(lvl.price, 2)}</span>
-            <div className="flex-1 flex items-center gap-0.5 ml-2">
-              <div className="flex items-center h-3 relative flex-1">
-                <div
-                  className="h-full bg-accent-green/40 absolute right-1/2"
-                  style={{ width: `${(lvl.bid_volume / maxVol) * 50}%`, right: `${50 - (lvl.bid_volume / maxVol) * 25}%` }}
-                />
-                <div
-                  className="h-full bg-accent-red/40 absolute left-1/2"
-                  style={{ width: `${(lvl.ask_volume / maxVol) * 50}%`, left: `${50 - (lvl.ask_volume / maxVol) * 25}%` }}
-                />
+    <div className="h-full overflow-y-auto p-2">
+      <div className="text-[10px] font-mono space-y-px">
+        {/* Header */}
+        <div className="flex items-center gap-3 text-[9px] text-gray-600 uppercase tracking-wider px-1 pb-1 border-b border-surface-border/30 mb-1">
+          <span className="w-16">Price</span>
+          <span className="w-12 text-right">Buy</span>
+          <span className="w-12 text-right">Sell</span>
+          <span className="w-12 text-right">Delta</span>
+        </div>
+
+        {footprint.levels.slice(-50).map((level: any, i: number) => {
+          const delta = (level.buyVolume || 0) - (level.sellVolume || 0);
+          return (
+            <div key={i} className="flex items-center gap-3 px-1 py-0.5 hover:bg-glass-white-hover rounded transition-colors">
+              <span className="w-16 text-gray-300 tabular-nums">{level.price?.toFixed(2) ?? "N/A"}</span>
+              <div className="w-12 h-4 relative">
+                <div className="absolute right-0 top-0 bottom-0 bg-accent-green/20 rounded" style={{ width: `${((level.buyVolume || 0) / maxVolume) * 100}%` }} />
+                <span className="relative z-10 text-right block text-accent-green text-[9px] tabular-nums">{(level.buyVolume || 0).toFixed(2)}</span>
               </div>
-              <span className={`w-14 text-right ${
-                lvl.delta > 0 ? "text-accent-green" : lvl.delta < 0 ? "text-accent-red" : "text-gray-500"
-              }`}>
-                {lvl.delta > 0 ? "+" : ""}{lvl.delta.toFixed(2)}
+              <div className="w-12 h-4 relative">
+                <div className="absolute left-0 top-0 bottom-0 bg-accent-red/20 rounded" style={{ width: `${((level.sellVolume || 0) / maxVolume) * 100}%` }} />
+                <span className="relative z-10 text-left block text-accent-red text-[9px] tabular-nums">{(level.sellVolume || 0).toFixed(2)}</span>
+              </div>
+              <span className={`w-12 text-right text-[9px] tabular-nums ${delta >= 0 ? "text-accent-green" : "text-accent-red"}`}>
+                {delta >= 0 ? "+" : ""}{delta.toFixed(2)}
               </span>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

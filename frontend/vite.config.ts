@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
@@ -13,5 +14,13 @@ export default defineConfig({
         ws: true,
       },
     },
+  },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: [],
+    // Benchmark-related env vars are automatically exposed via VITE_ prefix
+    // No special bench config needed — vitest 4.x runs .bench.test.* files
+    // alongside regular tests with `vitest run`, or standalone with `vitest bench`.
   },
 });

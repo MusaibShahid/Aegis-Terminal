@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
+import sys
+import threading
 from typing import Any, Callable, Coroutine
 
 import structlog
@@ -10,7 +13,7 @@ logger = structlog.get_logger()
 
 Handler = Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
 
-MT5_PYTHON = r"C:\Python310-32\python.exe"
+MT5_PYTHON = sys.executable
 WORKER_SCRIPT = "mt5_worker.py"
 
 TIMEFRAME_MAP = {
@@ -20,18 +23,20 @@ TIMEFRAME_MAP = {
 
 
 class MT5Bridge:
-    """Spawns a 32-bit Python subprocess running mt5_worker.py and reads
-    JSON-line messages (quotes, candles, errors) from its stdout.
+    """Spawns a Python subprocess running mt5_worker.py and reads
+    JSON-line messages (quotes, candles, errors) from its stdout using reader threads.
     Sends commands (e.g. fetch_history) via stdin."""
 
     def __init__(self) -> None:
-        self._proc: asyncio.subprocess.Process | None = None
+        self._proc: subprocess.Popen | None = None
         self._running = False
         self._on_quote: Handler | None = None
         self._on_candle: Handler | None = None
         self._pending_requests: dict[int, asyncio.Future] = {}
         self._req_counter = 0
         self._req_lock = asyncio.Lock()
+        self._write_lock = threading.Lock()
+        self._loop: asyncio.AbstractEventLoop | None = None
 
     def set_handlers(self, on_quote: Handler | None = None, on_candle: Handler | None = None) -> None:
         self._on_quote = on_quote
@@ -47,58 +52,64 @@ class MT5Bridge:
             return False
 
         try:
-            self._proc = await asyncio.create_subprocess_exec(
-                MT5_PYTHON,
-                script_path,
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            self._proc = subprocess.Popen(
+                [MT5_PYTHON, script_path],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
             )
         except FileNotFoundError:
-            logger.error("mt5_32bit_python_not_found", path=MT5_PYTHON)
+            logger.error("mt5_python_not_found", path=MT5_PYTHON)
+            return False
+        except Exception as e:
+            logger.error("mt5_subprocess_start_failed", error=str(e))
             return False
 
         self._running = True
-        asyncio.create_task(self._reader())
-        asyncio.create_task(self._stderr_reader())
+        self._loop = asyncio.get_running_loop()
+        threading.Thread(target=self._sync_reader, daemon=True).start()
+        threading.Thread(target=self._sync_stderr_reader, daemon=True).start()
         logger.info("mt5_bridge_started")
         return True
 
-    async def _reader(self) -> None:
+    def _sync_reader(self) -> None:
         assert self._proc is not None and self._proc.stdout is not None
         while self._running:
             try:
-                line = await self._proc.stdout.readline()
+                line = self._proc.stdout.readline()
                 if not line:
                     logger.warning("mt5_worker_stdout_closed")
                     break
-                text = line.decode("utf-8", errors="replace").strip()
+                text = line.strip()
                 if not text:
                     continue
-                msg = json.loads(text)
-                await self._dispatch(msg)
-            except asyncio.CancelledError:
-                break
-            except json.JSONDecodeError:
-                continue
+                try:
+                    msg = json.loads(text)
+                except json.JSONDecodeError:
+                    continue
+                
+                # Dispatch back to asyncio event loop
+                if self._loop and self._loop.is_running():
+                    asyncio.run_coroutine_threadsafe(self._dispatch(msg), self._loop)
             except Exception as exc:
                 logger.warning("mt5_read_error", error=str(exc))
+                break
 
         self._running = False
         logger.warning("mt5_reader_stopped")
 
-    async def _stderr_reader(self) -> None:
+    def _sync_stderr_reader(self) -> None:
         assert self._proc is not None and self._proc.stderr is not None
         while self._running:
             try:
-                line = await self._proc.stderr.readline()
+                line = self._proc.stderr.readline()
                 if not line:
                     break
-                text = line.decode("utf-8", errors="replace").strip()
+                text = line.strip()
                 if text:
                     logger.warning("mt5_stderr", text=text)
-            except asyncio.CancelledError:
-                break
             except Exception:
                 break
 
@@ -137,8 +148,13 @@ class MT5Bridge:
         if not self._proc or not self._proc.stdin:
             raise RuntimeError("MT5 worker not running")
         line = json.dumps(cmd) + "\n"
-        self._proc.stdin.write(line.encode("utf-8"))
-        await self._proc.stdin.drain()
+
+        def _write():
+            with self._write_lock:
+                if self._running and self._proc and self._proc.stdin and self._proc.returncode is None:
+                    self._proc.stdin.write(line)
+                    self._proc.stdin.flush()
+        await asyncio.to_thread(_write)
 
     async def get_history(self, symbol: str, interval: str = "1m", count: int = 500) -> list[dict]:
         """Fetch historical candles from MT5 via stdin command to the running worker."""
@@ -151,7 +167,8 @@ class MT5Bridge:
         async with self._req_lock:
             self._req_counter += 1
             req_id = self._req_counter
-            future = asyncio.get_event_loop().create_future()
+            loop = self._loop or asyncio.get_running_loop()
+            future = loop.create_future()
             self._pending_requests[req_id] = future
 
         try:
@@ -175,13 +192,36 @@ class MT5Bridge:
 
     async def stop(self) -> None:
         self._running = False
-        if self._proc:
+        if not self._proc:
+            return
+
+        # Close stdin to signal the worker to exit on its own
+        try:
+            with self._write_lock:
+                if self._proc.stdin:
+                    self._proc.stdin.close()
+        except Exception:
+            pass
+
+        # Close stdout/stderr to unblock reader threads
+        for pipe_name in ("stdout", "stderr"):
+            pipe = getattr(self._proc, pipe_name, None)
+            if pipe:
+                try:
+                    pipe.close()
+                except Exception:
+                    pass
+
+        # Give the worker a moment, then kill
+        try:
+            await asyncio.to_thread(self._proc.wait, timeout=3)
+        except Exception:
             try:
                 self._proc.kill()
-                await self._proc.wait()
+                await asyncio.to_thread(self._proc.wait)
             except Exception:
                 pass
-            self._proc = None
+        self._proc = None
         logger.info("mt5_bridge_stopped")
 
     @property

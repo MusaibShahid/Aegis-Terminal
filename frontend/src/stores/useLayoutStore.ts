@@ -21,6 +21,7 @@ const defaultPane = (symbol = "BTCUSDT"): PaneConfig => ({
   symbol,
   interval: "1m",
   indicators: [],
+  oscillators: [],
   chartType: "candle",
   linked: false,
 });

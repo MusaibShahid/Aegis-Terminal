@@ -1,87 +1,63 @@
 import { useState } from "react";
-import { useLayoutStore } from "../stores/useLayoutStore";
+
+// In-memory templates for now
+const DEFAULT_TEMPLATES = [
+  { id: "default", name: "Default", description: "Single candle chart" },
+  { id: "analytics", name: "Analytics", description: "Chart + footprint + delta" },
+  { id: "depth", name: "Depth", description: "Chart + DOM ladder" },
+];
 
 export function TemplatePanel() {
-  const panes = useLayoutStore((s) => s.panes);
-  const loadLayout = useLayoutStore((s) => s.loadLayout);
-  const getLayout = useLayoutStore((s) => s.getLayout);
-  const [savedTemplates, setSavedTemplates] = useState<
-    { name: string; data: string }[]
-  >(() => {
-    try {
-      return JSON.parse(localStorage.getItem("aegis_templates") || "[]");
-    } catch {
-      return [];
-    }
-  });
-  const [name, setName] = useState("");
+  const [templates] = useState(DEFAULT_TEMPLATES);
+  const [applying, setApplying] = useState<string | null>(null);
 
-  const saveCurrent = () => {
-    if (!name.trim()) return;
-    const layout = getLayout();
-    const entry = { name: name.trim(), data: JSON.stringify(layout) };
-    const updated = [...savedTemplates, entry];
-    setSavedTemplates(updated);
-    localStorage.setItem("aegis_templates", JSON.stringify(updated));
-    setName("");
-  };
-
-  const loadTemplate = (entry: { name: string; data: string }) => {
+  const handleApply = async (templateId: string) => {
+    setApplying(templateId);
     try {
-      const layout = JSON.parse(entry.data);
-      loadLayout(layout);
+      await fetch(`/api/layout/template/${templateId}`, { method: "POST" });
+      window.location.reload();
     } catch {
       // ignore
+    } finally {
+      setApplying(null);
     }
-  };
-
-  const deleteTemplate = (idx: number) => {
-    const updated = savedTemplates.filter((_, i) => i !== idx);
-    setSavedTemplates(updated);
-    localStorage.setItem("aegis_templates", JSON.stringify(updated));
   };
 
   return (
-    <div className="flex flex-col h-full text-xs">
-      <div className="p-2 border-b border-surface-border space-y-1">
-        <div className="flex gap-1">
-          <input
-            className="flex-1 bg-surface border border-surface-border rounded px-2 py-1 text-xs text-white"
-            placeholder="Template name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-          <button
-            className="bg-accent-blue text-white px-2 rounded text-[10px] hover:bg-accent-blue/80"
-            onClick={saveCurrent}
-          >
-            Save
-          </button>
+    <div className="flex flex-col h-full text-xs p-2 space-y-1.5">
+      {templates.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-40">
+            <rect x="3" y="3" width="7" height="7" />
+            <rect x="14" y="3" width="7" height="7" />
+            <rect x="3" y="14" width="7" height="7" />
+            <rect x="14" y="14" width="7" height="7" />
+          </svg>
+          <span className="text-xs">No templates available</span>
         </div>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        {savedTemplates.length === 0 && (
-          <div className="text-gray-500 p-2 text-center">No saved templates</div>
-        )}
-        {savedTemplates.map((t, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between px-2 py-1.5 border-b border-surface-border/30 hover:bg-surface-alt cursor-pointer"
-            onClick={() => loadTemplate(t)}
-          >
-            <span className="text-gray-300">{t.name}</span>
-            <button
-              className="text-gray-500 hover:text-accent-red text-[10px]"
-              onClick={(e) => {
-                e.stopPropagation();
-                deleteTemplate(i);
-              }}
-            >
-              x
-            </button>
+      ) : (
+        templates.map((t) => (
+          <div key={t.id} className="glass-card rounded-lg p-2.5 group hover:bg-glass-white-hover transition-colors">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-white/80 text-[11px] font-medium">{t.name}</div>
+                <div className="text-[9px] text-gray-600 mt-0.5">{t.description}</div>
+              </div>
+              <button
+                className="btn-primary bg-accent-blue/15 text-accent-blue border border-accent-blue/25 hover:bg-accent-blue/25 text-[9px] disabled:opacity-40"
+                onClick={() => handleApply(t.id)}
+                disabled={applying === t.id}
+              >
+                {applying === t.id ? (
+                  <span className="w-2 h-2 rounded-full bg-accent-blue animate-pulse inline-block" />
+                ) : (
+                  "Apply"
+                )}
+              </button>
+            </div>
           </div>
-        ))}
-      </div>
+        ))
+      )}
     </div>
   );
 }

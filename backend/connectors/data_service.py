@@ -7,7 +7,8 @@ from websocket.manager import manager
 
 logger = structlog.get_logger()
 
-SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSDT", "XAGUSDT", "BNBUSDT", "EURUSDT", "GBPUSDT"]
+# XAUUSDT (gold) is routed through MT5 — not available on Binance Spot
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XAGUSDT", "BNBUSDT", "EURUSDT", "GBPUSDT"]
 INTERVALS = ["1m", "5m", "1h"]
 
 

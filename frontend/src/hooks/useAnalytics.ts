@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
 import { useFootprintStore } from "../stores/useFootprintStore";
 
+/**
+ * Fetches footprint/delta/VPVR once on mount for instant display.
+ * After the initial load, updates come from the WebSocket stream
+ * (handled in useWebSocket.ts which calls setFootprint/setVPVR/setDelta
+ * on "footprint" / "vpvr" / "delta" message types).
+ */
 export function useFootprint(symbol: string) {
   const setFootprint = useFootprintStore((s) => s.setFootprint);
   const prevRef = useRef("");
@@ -27,10 +33,9 @@ export function useFootprint(symbol: string) {
       }
     };
     fetchData();
-    const interval = setInterval(fetchData, 10000);
+    // No more 10s REST polling — updates come via WebSocket
     return () => {
       cancelled = true;
-      clearInterval(interval);
     };
   }, [symbol, setFootprint]);
 }

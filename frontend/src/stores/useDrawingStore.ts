@@ -13,6 +13,7 @@ interface DrawingState {
   loadDrawings: (paneId: string) => Promise<void>;
   addDrawing: (drawing: Drawing) => Promise<void>;
   removeDrawing: (id: string) => Promise<void>;
+  updateDrawing: (id: string, updates: Partial<Drawing>) => Promise<void>;
   clearPane: (paneId: string) => void;
   setActiveTool: (tool: ActiveTool) => void;
   undo: () => void;
@@ -21,9 +22,9 @@ interface DrawingState {
 
 const MAX_HISTORY = 50;
 
-function pushHistory(s: DrawingState) {
+function pushHistory(s: DrawingState, newDrawings: Drawing[]) {
   const newHistory = s.history.slice(0, s.historyIndex + 1);
-  newHistory.push(s.drawings);
+  newHistory.push(newDrawings);
   if (newHistory.length > MAX_HISTORY + 1) newHistory.shift();
   return { history: newHistory, historyIndex: newHistory.length - 1 };
 }
@@ -48,7 +49,8 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
   historyIndex: 0,
   loading: false,
 
-  setDrawings: (drawings) => set((s) => ({ ...pushHistory(s), drawings })),
+  setDrawings: (drawings) =>
+    set((s) => ({ ...pushHistory(s, drawings), drawings })),
 
   loadDrawings: async (paneId: string) => {
     set({ loading: true });
@@ -71,7 +73,7 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
   addDrawing: async (drawing) => {
     const s = get();
     const newDrawings = [...s.drawings, drawing];
-    set({ ...pushHistory(s), drawings: newDrawings });
+    set({ ...pushHistory(s, newDrawings), drawings: newDrawings });
     try {
       const result = await apiPost("/api/drawings", {
         pane_id: drawing.paneId,
@@ -94,11 +96,32 @@ export const useDrawingStore = create<DrawingState>((set, get) => ({
     const s = get();
     const drawing = s.drawings.find((d) => d.id === id || String(d._serverId) === id);
     if (!drawing) return;
-    const newDrawings = s.drawings.filter((d) => d.id !== id);
-    set({ ...pushHistory(s), drawings: newDrawings });
+    const newDrawings = s.drawings.filter((d) => !(d.id === id || String(d._serverId) === id));
+    set({ ...pushHistory(s, newDrawings), drawings: newDrawings });
     if (drawing._serverId) {
       try {
         await apiDelete(`/api/drawings/${drawing._serverId as number}`);
+      } catch {
+        // Silently fail
+      }
+    }
+  },
+
+  updateDrawing: async (id, updates) => {
+    const s = get();
+    const idx = s.drawings.findIndex((d) => d.id === id || String(d._serverId) === id);
+    if (idx === -1) return;
+    const updated = { ...s.drawings[idx], ...updates };
+    const newDrawings = [...s.drawings];
+    newDrawings[idx] = updated;
+    set({ ...pushHistory(s, newDrawings), drawings: newDrawings });
+    if (updated._serverId) {
+      try {
+        await fetch(`/api/drawings/${updated._serverId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: updated }),
+        });
       } catch {
         // Silently fail
       }

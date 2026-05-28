@@ -6,44 +6,50 @@ interface Props {
 
 export function DeltaChart({ symbol }: Props) {
   const delta = useFootprintStore((s) => s.delta[symbol]);
-  if (!delta) {
-    return <div className="text-xs text-gray-500 p-2">Waiting for delta data...</div>;
+
+  if (!delta || !delta.delta_series || delta.delta_series.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full text-gray-600 text-xs">
+        Loading delta data...
+      </div>
+    );
   }
 
-  const series = delta.delta_series || [];
-  const cumDelta = delta.cumulative_delta || 0;
-  const cd = delta.candle_delta || { buy_volume: 0, sell_volume: 0, delta: 0, total_volume: 0 };
-
-  const maxAbs = Math.max(
-    ...series.map((s) => Math.abs(s.cumulative_delta)),
-    1
-  );
+  const series = delta.delta_series.slice(-100);
+  const values = series.map((d: any) => d.cumulative_delta || 0);
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, -1);
+  const range = Math.max(max - min, 1);
 
   return (
-    <div className="h-full flex flex-col text-[10px] font-mono">
-      <div className="flex items-center gap-3 px-2 py-1 bg-surface-alt border-b border-surface-border shrink-0 text-xs">
-        <span className="text-gray-400">Delta — {symbol}</span>
-        <span className={cd.delta >= 0 ? "text-accent-green" : "text-accent-red"}>
-          {cd.delta >= 0 ? "+" : ""}{cd.delta.toFixed(4)}
-        </span>
-        <span className="text-gray-400">
-          Cum: <span className={cumDelta >= 0 ? "text-accent-green" : "text-accent-red"}>
-            {cumDelta >= 0 ? "+" : ""}{cumDelta.toFixed(4)}
+    <div className="h-full flex flex-col p-2">
+      {/* Summary */}
+      <div className="flex items-center gap-3 mb-2 text-[10px] font-mono">
+        <div className="glass-card rounded px-2 py-1">
+          <span className="text-gray-600">Candle Δ: </span>
+          <span className={delta.candle_delta >= 0 ? "text-accent-green tabular-nums" : "text-accent-red tabular-nums"}>
+            {delta.candle_delta >= 0 ? "+" : ""}{delta.candle_delta?.toFixed(2) ?? "0"}
           </span>
-        </span>
+        </div>
+        <div className="glass-card rounded px-2 py-1">
+          <span className="text-gray-600">Cum Δ: </span>
+          <span className={delta.cumulative_delta >= 0 ? "text-accent-green tabular-nums" : "text-accent-red tabular-nums"}>
+            {delta.cumulative_delta >= 0 ? "+" : ""}{delta.cumulative_delta?.toFixed(2) ?? "0"}
+          </span>
+        </div>
       </div>
-      <div className="flex-1 flex items-end gap-px px-1 py-2">
-        {series.slice(-100).map((s, i) => {
-          const h = Math.abs((s.cumulative_delta / maxAbs) * 100);
+
+      {/* Bar chart */}
+      <div className="flex-1 flex items-end gap-[2px] pr-1">
+        {series.map((d: any, i: number) => {
+          const val = d.cumulative_delta || 0;
+          const h = Math.abs(val) / range * 100;
+          const isPositive = val >= 0;
           return (
-            <div
-              key={i}
-              className="flex-1 flex flex-col items-center justify-end"
-              style={{ height: "100%" }}
-            >
+            <div key={i} className="flex-1 flex flex-col items-center justify-end min-w-0" style={{ height: "100%" }}>
               <div
-                className={`w-full ${s.cumulative_delta >= 0 ? "bg-accent-green/50" : "bg-accent-red/50"}`}
-                style={{ height: `${Math.max(h, 1)}%` }}
+                className={`w-full rounded-t-sm transition-all duration-200 ${isPositive ? "bg-accent-green/60" : "bg-accent-red/60"}`}
+                style={{ height: `${Math.max(h, 3)}%` }}
               />
             </div>
           );

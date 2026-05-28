@@ -1,18 +1,18 @@
 import { useDrawingStore } from "../stores/useDrawingStore";
 import type { DrawingTool } from "../types";
 
-const TOOLS: { tool: DrawingTool; label: string }[] = [
-  { tool: "trendline", label: "↗" },
-  { tool: "horizontal", label: "—" },
-  { tool: "vertical", label: "⎸" },
-  { tool: "ray", label: "→" },
-  { tool: "arrow", label: "▲" },
-  { tool: "rectangle", label: "▭" },
-  { tool: "circle", label: "○" },
-  { tool: "freehand", label: "✎" },
-  { tool: "fibonacci", label: "Fib" },
-  { tool: "text", label: "T" },
-  { tool: "eraser", label: "⌫" },
+const TOOLS: { tool: DrawingTool; label: string; name: string }[] = [
+  { tool: "trendline", label: "↗", name: "Trendline" },
+  { tool: "horizontal", label: "—", name: "Horizontal" },
+  { tool: "vertical", label: "⎸", name: "Vertical" },
+  { tool: "ray", label: "→", name: "Ray" },
+  { tool: "arrow", label: "▲", name: "Arrow" },
+  { tool: "rectangle", label: "▭", name: "Rectangle" },
+  { tool: "circle", label: "○", name: "Circle" },
+  { tool: "freehand", label: "✎", name: "Freehand" },
+  { tool: "fibonacci", label: "Fib", name: "Fibonacci" },
+  { tool: "text", label: "T", name: "Text" },
+  { tool: "eraser", label: "⌫", name: "Eraser" },
 ];
 
 export function DrawingToolbar() {
@@ -24,14 +24,14 @@ export function DrawingToolbar() {
   const redo = useDrawingStore((s) => s.redo);
 
   return (
-    <div className="flex items-center gap-1 px-2 py-1 bg-surface-alt border-b border-surface-border shrink-0">
+    <div className="flex items-center gap-0.5 px-2 py-1.5 bg-[#0d0f17] border-b border-white/5 shrink-0">
       {TOOLS.map((t) => (
         <button
           key={t.tool}
-          className={`w-7 h-7 flex items-center justify-center text-xs rounded transition-colors ${
+          className={`w-7 h-7 flex items-center justify-center text-xs rounded-lg transition-all duration-150 ${
             activeTool?.tool === t.tool
-              ? "bg-accent-blue text-white"
-              : "text-gray-400 hover:text-white hover:bg-surface"
+              ? "bg-accent-blue/15 text-accent-blue shadow-[0_0_8px_rgba(59,130,246,0.15)]"
+              : "text-gray-500 hover:text-white hover:bg-white/[0.05]"
           }`}
           onClick={() => {
             if (t.tool === "eraser") {
@@ -42,16 +42,30 @@ export function DrawingToolbar() {
               setActiveTool({ tool: t.tool });
             }
           }}
-          title={t.tool}
+          title={t.name}
         >
           {t.label}
         </button>
       ))}
-      <div className="w-px h-5 bg-surface-border mx-1" />
-      <button className="w-7 h-7 flex items-center justify-center text-xs text-gray-400 hover:text-white" onClick={undo} title="Undo">↩</button>
-      <button className="w-7 h-7 flex items-center justify-center text-xs text-gray-400 hover:text-white" onClick={redo} title="Redo">↪</button>
-      <div className="w-px h-5 bg-surface-border mx-1" />
-      <span className="text-[10px] text-gray-500">{drawings.length}</span>
+      <div className="w-px h-5 bg-white/10 mx-1.5" />
+      <button
+        className="w-7 h-7 flex items-center justify-center text-xs text-gray-500 hover:text-white hover:bg-white/[0.05] rounded-lg transition-all"
+        onClick={undo}
+        title="Undo"
+      >
+        ↩
+      </button>
+      <button
+        className="w-7 h-7 flex items-center justify-center text-xs text-gray-500 hover:text-white hover:bg-white/[0.05] rounded-lg transition-all"
+        onClick={redo}
+        title="Redo"
+      >
+        ↪
+      </button>
+      <div className="w-px h-5 bg-white/10 mx-1.5" />
+      <span className="text-[10px] text-gray-500 tabular-nums">
+        {drawings.length}
+      </span>
     </div>
   );
 }

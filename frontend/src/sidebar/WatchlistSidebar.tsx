@@ -1,244 +1,214 @@
-import { useState, useRef, useCallback } from "react";
+import { useState } from "react";
 import { useMarketStore } from "../stores/useMarketStore";
 import { useWatchlistStore } from "../stores/useWatchlistStore";
-import { formatPrice } from "../utils/format";
-
-const GROUP_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"];
 
 interface Props {
   onSelectSymbol: (symbol: string) => void;
 }
 
 export function WatchlistSidebar({ onSelectSymbol }: Props) {
-  const groups = useWatchlistStore((s) => s.groups);
-  const activeGroup = useWatchlistStore((s) => s.activeGroup);
-  const setActiveGroup = useWatchlistStore((s) => s.setActiveGroup);
-  const addGroup = useWatchlistStore((s) => s.addGroup);
-  const removeGroup = useWatchlistStore((s) => s.removeGroup);
-  const renameGroup = useWatchlistStore((s) => s.renameGroup);
-  const setGroupColor = useWatchlistStore((s) => s.setGroupColor);
-  const addSymbol = useWatchlistStore((s) => s.addSymbol);
-  const removeSymbol = useWatchlistStore((s) => s.removeSymbol);
-  const reorderSymbols = useWatchlistStore((s) => s.reorderSymbols);
+  const { groups, activeGroup, setActiveGroup, addSymbol, removeSymbol, addGroup, removeGroup, renameGroup, setGroupColor, contextMenu, setContextMenu } = useWatchlistStore();
   const quotes = useMarketStore((s) => s.quotes);
 
-  const [showAddGroup, setShowAddGroup] = useState(false);
+  const [addingGroup, setAddingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
-  const [showAddSymbol, setShowAddSymbol] = useState(false);
+  const [addingSymbol, setAddingSymbol] = useState<string | null>(null);
   const [newSymbol, setNewSymbol] = useState("");
-  const [renameMode, setRenameMode] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [showGroupMenu, setShowGroupMenu] = useState<string | null>(null);
-  const group = groups.find((g) => g.name === activeGroup) ?? groups[0];
 
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const activeGroupColor = group?.color || GROUP_COLORS[0];
+  const visibleGroups = activeGroup ? groups.filter((g) => g.name === activeGroup) : groups;
 
   const handleAddGroup = () => {
-    if (newGroupName.trim()) {
-      addGroup({
-        name: newGroupName.trim(),
-        symbols: [],
-        color: GROUP_COLORS[groups.length % GROUP_COLORS.length],
-        order: groups.length,
-      });
-      setNewGroupName("");
-      setShowAddGroup(false);
+    const name = newGroupName.trim();
+    if (name && !groups.some((g) => g.name === name)) {
+      addGroup({ name, symbols: [], color: "#4d7cff", order: groups.length });
     }
+    setNewGroupName("");
+    setAddingGroup(false);
   };
 
-  const handleAddSymbol = () => {
-    if (newSymbol.trim() && group) {
-      addSymbol(group.name, newSymbol.trim().toUpperCase());
-      setNewSymbol("");
-      setShowAddSymbol(false);
-    }
+  const handleAddSymbol = (groupName: string) => {
+    const sym = newSymbol.trim().toUpperCase();
+    if (sym) addSymbol(groupName, sym);
+    setNewSymbol("");
+    setAddingSymbol(null);
   };
-
-  const handleDragStart = (index: number) => setDragIndex(index);
-  const handleDragOver = useCallback(
-    (e: React.DragEvent, index: number) => {
-      e.preventDefault();
-      if (dragIndex === null || dragIndex === index || !group) return;
-      const syms = [...group.symbols];
-      const [moved] = syms.splice(dragIndex, 1);
-      syms.splice(index, 0, moved);
-      reorderSymbols(group.name, syms);
-      setDragIndex(index);
-    },
-    [dragIndex, group, reorderSymbols]
-  );
-  const handleDragEnd = () => setDragIndex(null);
 
   return (
-    <div className="flex flex-col h-full text-xs" onClick={() => { setShowGroupMenu(null); }}>
-      {/* Group tabs */}
-      <div className="flex border-b border-surface-border shrink-0 overflow-x-auto">
-        {groups.map((g) => (
-          <div key={g.name} className="relative group/tab">
-            <button
-              className={`flex items-center gap-1 px-2 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${
-                g.name === activeGroup
-                  ? "text-white bg-surface"
-                  : "text-gray-500 hover:text-gray-300"
-              }`}
-              onClick={() => setActiveGroup(g.name)}
-            >
-              <span
-                className="w-1.5 h-1.5 rounded-full shrink-0"
-                style={{ backgroundColor: g.color || GROUP_COLORS[0] }}
-              />
-              {g.name}
-            </button>
-            <button
-              className="absolute right-0 top-0 bottom-0 px-1 text-gray-600 hover:text-white opacity-0 group-hover/tab:opacity-100"
-              onClick={(e) => { e.stopPropagation(); setShowGroupMenu(showGroupMenu === g.name ? null : g.name); }}
-            >
-              ▾
-            </button>
-            {showGroupMenu === g.name && (
-              <div className="absolute top-full left-0 z-50 bg-surface border border-surface-border rounded shadow-lg py-1 min-w-[120px]">
-                <button
-                  className="w-full text-left px-2 py-1 text-[10px] text-gray-300 hover:bg-surface-alt"
-                  onClick={() => { setRenameMode(g.name); setRenameValue(g.name); setShowGroupMenu(null); }}
-                >
-                  Rename
-                </button>
-                <div className="px-2 py-1">
-                  <div className="text-[10px] text-gray-500 mb-1">Color</div>
-                  <div className="flex gap-1">
-                    {GROUP_COLORS.map((c) => (
-                      <button
-                        key={c}
-                        className={`w-3 h-3 rounded-full ${g.color === c ? "ring-1 ring-white" : ""}`}
-                        style={{ backgroundColor: c }}
-                        onClick={() => { setGroupColor(g.name, c); setShowGroupMenu(null); }}
-                      />
-                    ))}
-                  </div>
-                </div>
-                {groups.length > 1 && (
-                  <button
-                    className="w-full text-left px-2 py-1 text-[10px] text-accent-red hover:bg-surface-alt"
-                    onClick={() => { removeGroup(g.name); setShowGroupMenu(null); }}
-                  >
-                    Delete group
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-        <button
-          className="px-1.5 py-1 text-gray-500 hover:text-white shrink-0"
-          onClick={() => { setShowAddGroup(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-          title="Add group"
-        >
-          +
-        </button>
-      </div>
-
-      {/* Add group inline */}
-      {showAddGroup && (
-        <div className="flex gap-1 p-1 border-b border-surface-border">
-          <input
-            ref={inputRef}
-            className="flex-1 bg-surface border border-surface-border rounded px-1.5 py-1 text-xs text-white outline-none"
-            placeholder="Group name"
-            value={newGroupName}
-            onChange={(e) => setNewGroupName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleAddGroup()}
-          />
-          <button className="text-accent-blue text-xs" onClick={handleAddGroup}>✓</button>
-          <button className="text-gray-500 text-xs" onClick={() => setShowAddGroup(false)}>✗</button>
-        </div>
-      )}
-
-      {/* Rename mode */}
-      {renameMode && (
-        <div className="flex gap-1 p-1 border-b border-surface-border">
-          <input
-            className="flex-1 bg-surface border border-surface-border rounded px-1.5 py-1 text-xs text-white outline-none"
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && renameValue.trim()) {
-                renameGroup(renameMode, renameValue.trim());
-                setRenameMode(null);
-              }
-              if (e.key === "Escape") setRenameMode(null);
-            }}
-          />
-          <button
-            className="text-accent-blue text-xs"
-            onClick={() => { if (renameValue.trim()) { renameGroup(renameMode, renameValue.trim()); setRenameMode(null); } }}
-          >
-            ✓
-          </button>
-        </div>
-      )}
-
-      {/* Symbol list */}
-      <div className="flex-1 overflow-y-auto">
-        {group?.symbols.map((sym, idx) => {
-          const quote = quotes[sym];
-          return (
+    <div className="flex flex-col h-full text-xs">
+      <div className="flex-1 overflow-y-auto p-2 space-y-2">
+        {visibleGroups.map((group) => (
+          <div key={group.name} className="glass-card overflow-hidden">
+            {/* Group header */}
             <div
-              key={`${sym}-${idx}`}
-              className="flex items-center justify-between px-2 py-1.5 hover:bg-surface-alt cursor-pointer border-b border-surface-border/20 group/item"
-              onClick={() => onSelectSymbol(sym)}
-              draggable
-              onDragStart={() => handleDragStart(idx)}
-              onDragOver={(e) => handleDragOver(e, idx)}
-              onDragEnd={handleDragEnd}
+              className="flex items-center justify-between px-2 py-1.5 cursor-pointer hover:bg-glass-white-hover transition-colors"
+              onClick={() => setActiveGroup(activeGroup === group.name ? null : group.name)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setContextMenu({ x: e.clientX, y: e.clientY, group: group.name, symbol: "" });
+              }}
             >
-              <div className="flex items-center gap-1.5">
-                <span
-                  className="w-1 h-1 rounded-full shrink-0"
-                  style={{ backgroundColor: activeGroupColor }}
+              {renaming === group.name ? (
+                <input
+                  className="flex-1 bg-surface border border-surface-border rounded px-1 py-0.5 text-xs text-white outline-none"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={() => { if (renameValue.trim()) renameGroup(group.name, renameValue.trim()); setRenaming(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { if (renameValue.trim()) renameGroup(group.name, renameValue.trim()); setRenaming(null); } if (e.key === "Escape") setRenaming(null); }}
+                  autoFocus
                 />
-                <span className="font-medium text-gray-300">{sym}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className={`font-mono text-[11px] ${quote ? "text-white" : "text-gray-600"}`}>
-                  {quote ? formatPrice(quote.bid) : "--"}
-                </span>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: group.color }} />
+                  <span className="text-gray-300 font-medium text-[10px] uppercase tracking-wider">{group.name}</span>
+                  <span className="text-gray-600 text-[9px] font-mono">{group.symbols.length}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-0.5">
                 <button
-                  className="text-gray-600 hover:text-accent-red opacity-0 group-hover/item:opacity-100 text-[10px] ml-1"
-                  onClick={(e) => { e.stopPropagation(); if (group) removeSymbol(group.name, sym); }}
-                  title="Remove"
+                  className="text-gray-600 hover:text-white text-[9px] p-0.5 rounded hover:bg-glass-white transition-colors"
+                  onClick={(e) => { e.stopPropagation(); setAddingSymbol(group.name); }}
+                >
+                  +
+                </button>
+                <button
+                  className="text-gray-600 hover:text-accent-red text-[9px] p-0.5 rounded hover:bg-glass-white transition-colors"
+                  onClick={(e) => { e.stopPropagation(); removeGroup(group.name); }}
                 >
                   ✕
                 </button>
               </div>
             </div>
-          );
-        })}
+
+            {/* Symbols */}
+            <div className="space-y-px pb-1">
+              {group.symbols.map((sym) => {
+                const price = quotes[sym] ? (quotes[sym].bid + quotes[sym].ask) / 2 : null;
+                return (
+                  <div
+                    key={sym}
+                    className="flex items-center justify-between px-3 py-1 cursor-pointer hover:bg-glass-white-hover transition-colors rounded mx-0.5 group/sym"
+                    onClick={() => onSelectSymbol(sym)}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({ x: e.clientX, y: e.clientY, group: group.name, symbol: sym });
+                    }}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-400 font-mono text-[10px]">{sym.replace("USDT", "").replace("USD", "")}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {price && (
+                        <span className="text-gray-300 font-mono text-[10px] tabular-nums">
+                          ${price.toFixed(2)}
+                        </span>
+                      )}
+                      <button
+                        className="text-gray-700 hover:text-accent-red text-[8px] opacity-0 group-hover/sym:opacity-100 transition-all"
+                        onClick={(e) => { e.stopPropagation(); removeSymbol(group.name, sym); }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Inline add symbol */}
+            {addingSymbol === group.name && (
+              <div className="px-2 pb-2">
+                <div className="flex gap-1">
+                  <input
+                    className="flex-1 bg-[#0a0b14] border border-surface-border rounded px-2 py-1 text-[10px] text-white outline-none focus:border-accent-blue/50 transition-colors"
+                    value={newSymbol}
+                    onChange={(e) => setNewSymbol(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddSymbol(group.name); if (e.key === "Escape") { setAddingSymbol(null); setNewSymbol(""); } }}
+                    placeholder="Symbol..."
+                    autoFocus
+                  />
+                  <button
+                    className="text-[10px] text-accent-blue hover:text-white px-1 transition-colors"
+                    onClick={() => handleAddSymbol(group.name)}
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* Add group button */}
+        {addingGroup ? (
+          <div className="glass-card p-2">
+            <div className="flex gap-1">
+              <input
+                className="flex-1 bg-[#0a0b14] border border-surface-border rounded px-2 py-1 text-xs text-white outline-none focus:border-accent-blue/50"
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddGroup(); if (e.key === "Escape") { setAddingGroup(false); setNewGroupName(""); } }}
+                placeholder="Group name..."
+                autoFocus
+              />
+              <button className="btn-ghost text-xs" onClick={handleAddGroup}>+</button>
+            </div>
+          </div>
+        ) : (
+          <button
+            className="w-full text-[10px] text-gray-600 hover:text-white py-1 rounded transition-colors"
+            onClick={() => setAddingGroup(true)}
+          >
+            + Add Group
+          </button>
+        )}
       </div>
 
-      {/* Add symbol */}
-      {showAddSymbol ? (
-        <div className="flex gap-1 p-1 border-t border-surface-border">
-          <input
-            className="flex-1 bg-surface border border-surface-border rounded px-1.5 py-1 text-xs text-white outline-none"
-            placeholder="Symbol (e.g. ETHUSDT)"
-            value={newSymbol}
-            onChange={(e) => setNewSymbol(e.target.value.toUpperCase())}
-            onKeyDown={(e) => e.key === "Enter" && handleAddSymbol()}
-            autoFocus
-          />
-          <button className="text-accent-blue text-xs" onClick={handleAddSymbol}>✓</button>
-          <button className="text-gray-500 text-xs" onClick={() => setShowAddSymbol(false)}>✗</button>
-        </div>
-      ) : (
-        <button
-          className="flex items-center gap-1 px-2 py-1 text-gray-500 hover:text-white border-t border-surface-border text-[10px]"
-          onClick={() => setShowAddSymbol(true)}
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-[#0f1120] border border-surface-border rounded-lg shadow-glass py-1 min-w-[120px] animate-scale-in"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          + Add symbol
-        </button>
+          {contextMenu.symbol && (
+            <button
+              className="w-full text-left px-3 py-1 text-[10px] text-gray-400 hover:text-white hover:bg-glass-white-hover transition-colors"
+              onClick={() => { removeSymbol(contextMenu.group, contextMenu.symbol); setContextMenu(null); }}
+            >
+              ✕ Remove {contextMenu.symbol}
+            </button>
+          )}
+          <button
+            className="w-full text-left px-3 py-1 text-[10px] text-gray-400 hover:text-white hover:bg-glass-white-hover transition-colors"
+            onClick={() => { setRenaming(contextMenu.group); setRenameValue(contextMenu.group); setContextMenu(null); }}
+          >
+            ✏ Rename Group
+          </button>
+          <div className="border-t border-surface-border/50 my-1" />
+          {["#4d7cff", "#00d97c", "#ff4757", "#ffc53d", "#9b59ff", "#00d4ff", "#ff8c42"].map((color) => (
+            <button
+              key={color}
+              className="w-full text-left px-3 py-0.5 text-[10px] text-gray-400 hover:text-white hover:bg-glass-white-hover transition-colors flex items-center gap-2"
+              onClick={() => { setGroupColor(contextMenu.group, color); setContextMenu(null); }}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
+              {color}
+            </button>
+          ))}
+          <div className="border-t border-surface-border/50 my-1" />
+          <button
+            className="w-full text-left px-3 py-1 text-[10px] text-accent-red/70 hover:text-accent-red hover:bg-glass-white-hover transition-colors"
+            onClick={() => { removeGroup(contextMenu.group); setContextMenu(null); }}
+          >
+            ✕ Delete Group
+          </button>
+        </div>
+      )}
+
+      {/* Click outside to close context menu */}
+      {contextMenu && (
+        <div className="fixed inset-0 z-40" onClick={() => setContextMenu(null)} />
       )}
     </div>
   );

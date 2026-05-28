@@ -11,6 +11,7 @@ import { DrawingToolbar } from "../charts/DrawingTools";
 import { FeatureGuard } from "../components/FeatureGuard";
 import { FootprintChart } from "../charts/FootprintChart";
 import { HeatmapChart } from "../charts/HeatmapChart";
+import { OscillatorPanel } from "../charts/OscillatorPanel";
 import { SMCOverlay } from "../charts/SMCOverlay";
 import { VPVRChart } from "../charts/VPVRChart";
 import { IndicatorPanel } from "../components/IndicatorPanel";
@@ -22,6 +23,7 @@ import { useChartExport } from "../hooks/useChartExport";
 import { useIndicatorLines } from "../hooks/useIndicatorLines";
 import { useLayoutStore } from "../stores/useLayoutStore";
 import { useMarketStore } from "../stores/useMarketStore";
+import { useToolStore } from "../stores/useToolStore";
 import type { CandleMeta, PaneConfig } from "../types";
 
 interface Props {
@@ -50,6 +52,8 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
   const [tooltipMeta, setTooltipMeta] = useState<CandleMeta | undefined>();
   const [currentPrice, setCurrentPrice] = useState(0);
 
+  const isToolEnabled = useToolStore((s) => s.isToolEnabled);
+
   const paneCountdown = useCountdownStore(
     (s) => s.countdowns[`${pane.symbol}:${pane.interval}`]
   );
@@ -70,6 +74,23 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
     [pane.indicators, updatePane]
   );
 
+  const onAddOscillator = useCallback(
+    (paneId: string, type: string) => {
+      const osc = { id: `${type}-${Date.now()}`, type, params: {} } as any;
+      updatePane(paneId, { oscillators: [...pane.oscillators, osc] });
+    },
+    [pane.oscillators, updatePane]
+  );
+
+  const removeOscillator = useCallback(
+    (oscId: string) => {
+      updatePane(pane.id, {
+        oscillators: pane.oscillators.filter((o) => o.id !== oscId),
+      });
+    },
+    [pane.id, pane.oscillators, updatePane]
+  );
+
   const crosshairHandler = useCallback((price: number, time: number) => {
     setCurrentPrice(price);
     if (!candles) return;
@@ -86,14 +107,20 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
     [height, pane.indicators.length]
   );
 
-  const showSMC = pane.chartType === "candle";
+  // Feature gating using tool store
+  const showSMC = pane.chartType === "candle" && isToolEnabled("feat_smc");
+  const showDrawings = isToolEnabled("feat_drawings");
+  const showCountdown = isToolEnabled("feat_countdown");
+  const showTooltip = isToolEnabled("feat_tooltip");
+  const showTimer = isToolEnabled("feat_timer");
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden bg-surface/30">
       <Toolbar
         pane={pane}
         onUpdatePane={updatePane}
         onAddIndicator={onAddIndicator}
+        onAddOscillator={onAddOscillator}
         onChangeChartType={(type) => updatePane(pane.id, { chartType: type })}
         chartTypes={Object.entries(CHART_TYPE_LABELS).map(([k, v]) => ({
           value: k as PaneConfig["chartType"],
@@ -104,12 +131,23 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
           if (container) exportToPng(container, `${pane.symbol}_${pane.interval}.png`);
         }}
       />
-      {/* Countdown timer in header */}
-      <div className="flex items-center justify-between px-2 py-0.5 border-b border-surface-border/50 shrink-0">
-        <div />
-        <ChartTimer symbol={pane.symbol} interval={pane.interval} />
-      </div>
 
+      {/* Countdown row — conditionally shown */}
+      {showTimer && (
+        <div className="flex items-center justify-between h-6 px-2 border-b border-surface-border/30 shrink-0">
+          <div className="flex items-center gap-2 text-[10px] text-gray-600 min-w-0">
+            <span className="font-mono truncate">{pane.symbol}</span>
+            <span className="text-gray-700 shrink-0">•</span>
+            <span className="font-mono shrink-0">{pane.interval}</span>
+          </div>
+          <ChartTimer symbol={pane.symbol} interval={pane.interval} />
+        </div>
+      )}
+
+      {/* Drawing toolbar — conditionally shown */}
+      {showDrawings && <DrawingToolbar />}
+
+      {/* Chart area */}
       <div className="flex-1 min-h-0 relative overflow-hidden" ref={chartContainerRef}>
         {pane.chartType === "footprint" && (
           <FeatureGuard feature="tick_classification">
@@ -137,11 +175,11 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
               onCrosshairMove={crosshairHandler}
               indicatorLines={indicatorLines}
             />
-            <DrawingLayer chartRef={chartHandleRef} paneId={pane.id} />
+            {showDrawings && <DrawingLayer chartRef={chartHandleRef} paneId={pane.id} symbol={pane.symbol} candles={candles ?? []} />}
             {showSMC && <SMCOverlay symbol={pane.symbol} interval={pane.interval} />}
             {/* Price-axis countdown widget (bottom-right corner) */}
-            {paneCountdown && (
-              <div className="absolute bottom-1 right-1 z-30">
+            {showCountdown && paneCountdown && (
+              <div className="absolute bottom-2 right-2 z-30">
                 <PriceAxisCountdown
                   symbol={pane.symbol}
                   interval={pane.interval}
@@ -149,19 +187,35 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
                 />
               </div>
             )}
-            <CandleTooltip
-              visible={tooltipVisible}
-              x={tooltipPos.x}
-              y={tooltipPos.y}
-              candle={tooltipCandle || { time: 0, open: 0, high: 0, low: 0, close: 0, volume: 0 }}
-              meta={tooltipMeta}
-              remainingSeconds={paneCountdown?.remaining_seconds}
-            />
+            {showTooltip && (
+              <CandleTooltip
+                visible={tooltipVisible}
+                x={tooltipPos.x}
+                y={tooltipPos.y}
+                candle={tooltipCandle || { time: 0, open: 0, high: 0, low: 0, close: 0, volume: 0 }}
+                meta={tooltipMeta}
+                remainingSeconds={paneCountdown?.remaining_seconds}
+              />
+            )}
           </>
         )}
       </div>
-      <IndicatorPanel pane={pane} />
-      <DrawingToolbar />
+
+      {/* Indicator labels row */}
+      <IndicatorPanel pane={pane} onUpdatePane={updatePane} />
+
+      {/* Oscillator sub-panels */}
+      {pane.oscillators.map((osc) => (
+        <div key={osc.id} className="border-t border-surface-border/30 relative group">
+          <button
+            className="absolute top-1 right-1 z-10 text-[9px] text-gray-600 hover:text-accent-red opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-surface/50 rounded px-1 py-0.5"
+            onClick={() => removeOscillator(osc.id)}
+          >
+            ✕
+          </button>
+          <OscillatorPanel candles={candles ?? []} oscillator={osc} height={70} />
+        </div>
+      ))}
     </div>
   );
 }

@@ -12,6 +12,7 @@ from storage.models import Alert, Drawing, Layout, Watchlist, TradeJournal
 from utils.mock_data import generate_candles
 from analytics.footprint import build_footprint, calculate_delta, cumulative_delta
 from analytics.vpvr import compute_vpvr
+from execution.paper_trading import PaperTradingEngine, OrderSide, OrderType
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -257,7 +258,7 @@ async def check_feature(feature: str):
 
 # --- AI Assistant ---
 
-@router.post("/ai/analyze")
+@router.get("/ai/analyze")
 async def ai_analyze(symbol: str, interval: str = "1h"):
     bc = BinanceConnector()
     try:
@@ -338,7 +339,7 @@ async def delete_journal_entry(trade_id: int, db=Depends(get_db)):
 
 # --- AI Trade Assistant ---
 
-@router.post("/ai/trade-setup")
+@router.get("/ai/trade-setup")
 async def ai_trade_setup(symbol: str, interval: str = "1h"):
     bc = BinanceConnector()
     try:
@@ -404,6 +405,184 @@ async def get_screenshot(filename: str):
         raise HTTPException(status_code=404, detail="Screenshot not found")
     from fastapi.responses import FileResponse
     return FileResponse(str(filepath), media_type="image/png")
+
+
+# --- Paper Trading ---
+
+
+_paper_engine: PaperTradingEngine | None = None
+
+
+def _get_paper_engine(request: Request) -> PaperTradingEngine:
+    global _paper_engine
+    if _paper_engine is None:
+        _paper_engine = getattr(request.app.state, "paper_trading", None)
+    return _paper_engine
+
+
+@router.get("/paper/account")
+async def paper_account(request: Request):
+    """Get paper trading account snapshot."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        return {"error": "Paper trading engine not available"}
+    return engine.snapshot()
+
+
+@router.post("/paper/orders")
+async def paper_create_order(
+    symbol: str,
+    side: str,
+    order_type: str,
+    quantity: float,
+    price: float | None = None,
+    stop_price: float | None = None,
+    reason: str | None = None,
+    db=Depends(get_db),
+    request: Request = None,
+):
+    """Create a paper order (market / limit / stop / stop_limit)."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        raise HTTPException(status_code=503, detail="Paper trading engine not available")
+    result = await engine.create_order(
+        symbol=symbol, side=side, order_type=order_type,
+        quantity=quantity, price=price, stop_price=stop_price,
+        reason=reason, db=db,
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.get("/paper/orders")
+async def paper_list_orders(request: Request):
+    """List all open paper orders."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        return {"error": "Paper trading engine not available"}
+    return {"orders": [o for o in engine.open_orders]}
+
+
+@router.delete("/paper/orders/{order_id}")
+async def paper_cancel_order(order_id: int, db=Depends(get_db), request: Request = None):
+    """Cancel an open paper order."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        raise HTTPException(status_code=503, detail="Paper trading engine not available")
+    result = await engine.cancel_order(order_id, db=db)
+    if not result:
+        raise HTTPException(status_code=404, detail="Order not found or already filled")
+    return result
+
+
+@router.get("/paper/positions")
+async def paper_list_positions(request: Request):
+    """List all open paper positions."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        return {"error": "Paper trading engine not available"}
+    return {"positions": [engine._pos_to_dict(p) for p in engine.open_positions]}
+
+
+@router.put("/paper/positions/{position_id}")
+async def paper_update_position(
+    position_id: int,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+    db=Depends(get_db),
+    request: Request = None,
+):
+    """Update stop-loss and/or take-profit on an open paper position."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        raise HTTPException(status_code=503, detail="Paper trading engine not available")
+    result = await engine.update_position(position_id, stop_loss=stop_loss, take_profit=take_profit, db=db)
+    if not result:
+        raise HTTPException(status_code=404, detail="Position not found or already closed")
+    return result
+
+
+@router.delete("/paper/positions/{position_id}")
+async def paper_close_position(
+    position_id: int,
+    exit_price: float | None = None,
+    reason: str | None = None,
+    db=Depends(get_db),
+    request: Request = None,
+):
+    """Close an open paper position."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        raise HTTPException(status_code=503, detail="Paper trading engine not available")
+    result = await engine.close_position(position_id, exit_price=exit_price, reason=reason, db=db)
+    if not result:
+        raise HTTPException(status_code=404, detail="Position not found or already closed")
+    return result
+
+
+@router.get("/paper/history")
+async def paper_trade_history(request: Request):
+    """Get closed paper trade history."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        return {"error": "Paper trading engine not available"}
+    return {"trades": [
+        {
+            "id": t.id, "symbol": t.symbol, "side": t.side.value,
+            "entry_price": t.entry_price, "exit_price": t.exit_price,
+            "quantity": t.quantity, "pnl": t.pnl, "pnl_pct": t.pnl_pct,
+            "entry_reason": t.entry_reason, "exit_reason": t.exit_reason,
+            "opened_at": t.opened_at, "closed_at": t.closed_at,
+        }
+        for t in engine.closed_trades
+    ]}
+
+
+@router.get("/paper/settings")
+async def paper_get_settings(request: Request):
+    """Get paper trading settings (slippage, fee model, etc.)."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        return {"error": "Paper trading engine not available"}
+    return engine.settings
+
+
+@router.put("/paper/settings")
+async def paper_update_settings(
+    initial_balance: float | None = None,
+    slippage_bps: float | None = None,
+    fee_model: str | None = None,
+    taker_fee_bps: float | None = None,
+    maker_fee_bps: float | None = None,
+    db=Depends(get_db),
+    request: Request = None,
+):
+    """Update paper trading settings."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        raise HTTPException(status_code=503, detail="Paper trading engine not available")
+    if fee_model is not None and fee_model not in ("none", "exchange"):
+        raise HTTPException(status_code=400, detail="fee_model must be 'none' or 'exchange'")
+    result = await engine.update_settings(
+        initial_balance=initial_balance,
+        slippage_bps=slippage_bps,
+        fee_model=fee_model,
+        taker_fee_bps=taker_fee_bps,
+        maker_fee_bps=maker_fee_bps,
+        db=db,
+    )
+    return result
+
+
+@router.post("/paper/reset")
+async def paper_reset(db=Depends(get_db), request: Request = None):
+    """Reset paper trading account and clear all positions/orders."""
+    engine = _get_paper_engine(request)
+    if not engine:
+        raise HTTPException(status_code=503, detail="Paper trading engine not available")
+    await engine.reset(db=db)
+    return {"ok": True, **engine.stats}
 
 
 # --- Replay ---
