@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { X } from "lucide-react";
 import type { IndicatorOverlay, IndicatorOscillator } from "../types";
 
 interface Props {
@@ -40,33 +41,43 @@ const PARAM_DEFS: Record<string, { key: string; label: string; default: number; 
   atr: [{ key: "period", label: "Period", default: 14, min: 2, max: 200 }],
   obv: [{ key: "sma_period", label: "Signal SMA", default: 0, min: 0, max: 200 }],
   cmf: [{ key: "period", label: "Period", default: 20, min: 2, max: 200 }],
+  supertrend: [
+    { key: "period", label: "Period", default: 10, min: 2, max: 100 },
+    { key: "multiplier", label: "Multiplier", default: 3, min: 0.5, max: 10 },
+  ],
+  ichimoku: [
+    { key: "tenkan", label: "Tenkan", default: 9, min: 2, max: 100 },
+    { key: "kijun", label: "Kijun", default: 26, min: 2, max: 200 },
+    { key: "span_b", label: "Span B", default: 52, min: 2, max: 200 },
+    { key: "displacement", label: "Displacement", default: 26, min: 1, max: 100 },
+  ],
+  adx: [{ key: "period", label: "Period", default: 14, min: 2, max: 200 }],
+  crt: [{ key: "lookback", label: "Lookback", default: 20, min: 2, max: 200 }],
 };
 
 export function IndicatorConfigModal({ indicator, onSave, onClose }: Props) {
   const defs = PARAM_DEFS[indicator.type] || [];
   const [params, setParams] = useState<Record<string, number>>(() => {
     const initial: Record<string, number> = {};
-    for (const d of defs) {
-      initial[d.key] = indicator.params[d.key] ?? d.default;
-    }
+    for (const d of defs) initial[d.key] = indicator.params[d.key] ?? d.default;
     return initial;
   });
 
-  const handleSave = () => {
-    onSave(indicator.id, params);
-    onClose();
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-surface rounded-lg border border-surface-border p-4 w-64 text-xs shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="text-white font-semibold mb-3 uppercase tracking-wider">{indicator.type}</div>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content p-4 w-64" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-text-primary font-semibold uppercase tracking-wider text-sm">{indicator.type}</span>
+          <button className="w-6 h-6 flex items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors" onClick={onClose}>
+            <X size={12} />
+          </button>
+        </div>
         <div className="space-y-2">
           {defs.map((d) => (
             <div key={d.key}>
-              <label className="text-gray-500 block mb-0.5 text-[10px]">{d.label}</label>
+              <label className="text-text-tertiary block mb-0.5 text-[10px]">{d.label}</label>
               <input
-                className="w-full bg-surface-alt border border-surface-border rounded px-2 py-1 text-white text-xs outline-none focus:border-accent-blue"
+                className="input-field w-full"
                 type="number"
                 min={d.min}
                 max={d.max}
@@ -80,13 +91,9 @@ export function IndicatorConfigModal({ indicator, onSave, onClose }: Props) {
             </div>
           ))}
         </div>
-        <div className="flex gap-2 mt-3 justify-end">
-          <button className="px-3 py-1 rounded bg-surface-alt text-gray-400 hover:text-white" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="px-3 py-1 rounded bg-accent-blue text-white hover:bg-accent-blue/80" onClick={handleSave}>
-            Apply
-          </button>
+        <div className="flex gap-2 mt-4 justify-end">
+          <button className="btn-ghost text-xs" onClick={onClose}>Cancel</button>
+          <button className="btn-primary text-xs" onClick={() => { onSave(indicator.id, params); onClose(); }}>Apply</button>
         </div>
       </div>
     </div>

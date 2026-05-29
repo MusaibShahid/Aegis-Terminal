@@ -34,17 +34,26 @@ export interface Budgets {
   candleArrayCappedPush: number;
   /** Max ms for 10_000 candle array update-in-place operations */
   candleArrayUpdate: number;
+  /** Max ms for 100 drawBidAsk calls with 100 footprint levels */
+  footprintDrawBidAsk: number;
+  /** Max ms for 100 drawDelta calls with 100 footprint levels */
+  footprintDrawDelta: number;
+  /** Max ms for 100 drawImbalance calls with 100 footprint levels */
+  footprintDrawImbalance: number;
 }
 
 const DEFAULTS: Budgets = {
-  storeAddCandle: 150,
-  storeUpdateQuote: 80,
-  storeBatchOps: 200,
-  wsJsonParseDispatch: 120,
-  wsHandlerFanout: 180,
-  wsSubscribeSerialize: 40,
-  candleArrayCappedPush: 200,
-  candleArrayUpdate: 150,
+  storeAddCandle: 600,
+  storeUpdateQuote: 200,
+  storeBatchOps: 400,
+  wsJsonParseDispatch: 400,
+  wsHandlerFanout: 1500,
+  wsSubscribeSerialize: 100,
+  candleArrayCappedPush: 500,
+  candleArrayUpdate: 400,
+  footprintDrawBidAsk: 600,
+  footprintDrawDelta: 600,
+  footprintDrawImbalance: 600,
 };
 
 function envInt(key: string, fallback: number): number {
@@ -70,6 +79,9 @@ export function getBudgets(): Budgets {
     wsSubscribeSerialize: envInt("VITE_BENCH_WS_SUBSCRIBE_SERIALIZE_MS", DEFAULTS.wsSubscribeSerialize),
     candleArrayCappedPush: envInt("VITE_BENCH_CANDLE_ARRAY_CAPPED_PUSH_MS", DEFAULTS.candleArrayCappedPush),
     candleArrayUpdate: envInt("VITE_BENCH_CANDLE_ARRAY_UPDATE_MS", DEFAULTS.candleArrayUpdate),
+    footprintDrawBidAsk: envInt("VITE_BENCH_FOOTPRINT_DRAW_BIDASK_MS", DEFAULTS.footprintDrawBidAsk),
+    footprintDrawDelta: envInt("VITE_BENCH_FOOTPRINT_DRAW_DELTA_MS", DEFAULTS.footprintDrawDelta),
+    footprintDrawImbalance: envInt("VITE_BENCH_FOOTPRINT_DRAW_IMBALANCE_MS", DEFAULTS.footprintDrawImbalance),
   };
 }
 

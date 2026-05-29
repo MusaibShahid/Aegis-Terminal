@@ -60,8 +60,9 @@ class ReplayEngine:
         self._speed = max(0.1, min(speed, 100.0))
 
     def step(self, n: int = 1) -> list[dict[str, Any]]:
-        ticks = self._ticks[self._index : self._index + n]
-        self._index += n
+        end = min(self._index + n, len(self._ticks))
+        ticks = self._ticks[self._index : end]
+        self._index = end
         return ticks
 
     @property

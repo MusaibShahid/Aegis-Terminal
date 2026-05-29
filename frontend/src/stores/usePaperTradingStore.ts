@@ -411,15 +411,21 @@ export const usePaperTradingStore = create<PaperTradingState>()(
           closed_at: Date.now(),
         };
 
-        set((s) => ({
-          positions: s.positions.filter((p) => p.id !== id),
-          balance: s.balance + returnValue,
-          closedTrades: [trade, ...s.closedTrades.slice(0, 199)],
-          totalPnl: s.totalPnl + pnl,
-          totalTrades: s.totalTrades + 1,
-          wins: pnl > 0 ? s.wins + 1 : s.wins,
-          losses: pnl <= 0 ? s.losses + 1 : s.losses,
-        }));
+        set((s) => {
+          const newWins = pnl > 0 ? s.wins + 1 : s.wins;
+          const newLosses = pnl <= 0 ? s.losses + 1 : s.losses;
+          const newTotalTrades = s.totalTrades + 1;
+          return {
+            positions: s.positions.filter((p) => p.id !== id),
+            balance: s.balance + returnValue,
+            closedTrades: [trade, ...s.closedTrades.slice(0, 199)],
+            totalPnl: s.totalPnl + pnl,
+            totalTrades: newTotalTrades,
+            wins: newWins,
+            losses: newLosses,
+            winRate: newTotalTrades > 0 ? Math.round((newWins / newTotalTrades) * 100) : 0,
+          };
+        });
       },
 
       localCancelOrder: (orderId) =>

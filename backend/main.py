@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from aggregation.candle_aggregator import CandleAggregator, validate_candle
 from api.routes import router as api_router
 from config import settings
+from connectors.binance import close_shared_client
 from connectors.binance_depth import BinanceDepthConnector
 from connectors.data_service import DataService
 from connectors.mt5_bridge import MT5Bridge
@@ -16,6 +17,8 @@ from dependencies import dependency_manager
 from logging_setup import setup_logging
 from execution.paper_trading import PaperTradingEngine
 from execution.orderbook import OrderBookSimulator
+from execution.bot import BotOrchestrator
+from execution.live_trading import LiveTradingEngine
 from replay.engine import ReplayEngine
 from storage.database import get_db
 from tick_engine import TickEngine
@@ -44,9 +47,9 @@ async def lifespan(app: FastAPI):
     time_engine = TimeEngine()
     time_engine.add_handler(lambda msg: manager.broadcast("market", msg))
     time_engine.set_symbols(
-        ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XAUUSDT", "XAGUSDT", "BNBUSDT",
-         "EURUSDT", "GBPUSDT", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD",
-         "XAUUSD", "XAGUSD", "EURUSD", "GBPUSD"],
+        ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT",
+         "XAUUSD", "XAGUSD", "EURUSD", "GBPUSD",
+         "USDJPY", "AUDUSD", "USDCAD", "NZDUSD"],
         ["1m", "5m", "1h"],
     )
     await time_engine.start()
@@ -58,8 +61,9 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(5)
             import time as _tm
             now_ms = int(_tm.time() * 1000)
-            for sym in ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XAGUSDT",
-                        "EURUSDT", "GBPUSDT", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD"]:
+            for sym in ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT",
+                        "XAUUSD", "XAGUSD", "EURUSD", "GBPUSD",
+                        "USDJPY", "AUDUSD", "USDCAD", "NZDUSD"]:
                 for iv, partial in candle_aggregator.get_all_candles(sym).items():
                     partial["type"] = "candle"
                     partial["remaining_seconds"] = max(0, (partial["close_time"] - now_ms) // 1000)
@@ -78,11 +82,11 @@ async def lifespan(app: FastAPI):
         while True:
             try:
                 await asyncio.sleep(5)
-                symbols = list(tick_engine._ticks.keys())
-                logger.info("analytics_loop_iteration", symbol_count=len(symbols), keys=list(symbols[:5]))
-                if not symbols:
+                # Only iterate symbols that have recent tick data
+                active_symbols = [s for s in tick_engine._ticks.keys() if tick_engine._ticks[s]]
+                if not active_symbols:
                     continue
-                for sym in symbols:
+                for sym in active_symbols:
                     ticks = tick_engine.get_ticks(sym)
                     if not ticks:
                         continue
@@ -151,6 +155,13 @@ async def lifespan(app: FastAPI):
 
     dm.set_ready("paper_trading", True)
 
+    # --- Bot Orchestrator ---
+    bot_orchestrator = BotOrchestrator()
+    app.state.bot_orchestrator = bot_orchestrator
+    manager.bot_orchestrator = bot_orchestrator
+
+    dm.set_ready("bot_orchestrator", True)
+
     async def on_candle(candle: dict) -> None:
         # Validate incoming candle
         errors = validate_candle(candle)
@@ -167,6 +178,10 @@ async def lifespan(app: FastAPI):
         close = candle.get("close", 0)
         if symbol and close:
             await paper_trading.on_price(symbol, close)
+
+        # Feed bot orchestrator
+        if symbol and close:
+            await bot_orchestrator.on_candle(candle)
 
         # Properly aggregate into higher timeframes using full OHLC
         completed = candle_aggregator.ingest(candle)
@@ -212,15 +227,12 @@ async def lifespan(app: FastAPI):
         bid = quote.get("bid", 0)
         ask = quote.get("ask", 0)
         ts = quote.get("timestamp", 0)
-        # Use mid price as tick, assume buy if bid >= prev (simplified)
+        # Use mid price as a single tick (fixes triple-counting bug)
         if bid > 0 and ask > 0:
             mid = (bid + ask) / 2
-            tick_engine.process_tick(symbol, mid, 0, "buy", ts)
+            tick_engine.process_tick(symbol, mid, 1, "buy", ts)
             # Feed paper trading with quote mid price for real-time order checking
             await paper_trading.on_price(symbol, mid, bid=bid, ask=ask)
-        # Also store quote as a tick with both sides
-        tick_engine.process_tick(symbol, bid, 1, "sell", ts)
-        tick_engine.process_tick(symbol, ask, 1, "buy", ts)
 
     async def on_depth(depth: dict) -> None:
         await manager.broadcast("depth", depth)
@@ -241,10 +253,10 @@ async def lifespan(app: FastAPI):
     app.state.depth_conn = depth_conn
 
     # --- MT5 Bridge (gold, silver, forex via Python subprocess) ---
-    # Map XAUUSDT ↔ XAUUSD so the frontend can use XAUUSDT everywhere
+    # Map MT5 symbols to frontend symbols (identity for metals since we use XAUUSD/XAGUSD)
     MT5_SYMBOL_MAP = {
-        "XAUUSD": "XAUUSDT",
-        "XAGUSD": "XAGUSDT",
+        "XAUUSD": "XAUUSD",
+        "XAGUSD": "XAGUSD",
     }
     MT5_REVERSE_MAP: dict[str, str] = {v: k for k, v in MT5_SYMBOL_MAP.items()}
 
@@ -257,9 +269,9 @@ async def lifespan(app: FastAPI):
         return MT5_REVERSE_MAP.get(symbol.upper(), symbol.upper())
 
     try:
-        mt5 = MT5Bridge()
+        mt5 = MT5Bridge(symbol_map=MT5_REVERSE_MAP)
 
-        # Wrap handlers to map symbols from MT5 format (XAUUSD) to frontend format (XAUUSDT)
+        # Wrap handlers to map symbols from MT5 format (XAUUSD) to frontend format (XAUUSD)
         mt5_on_candle = on_candle
         mt5_on_quote = on_quote
 
@@ -281,6 +293,79 @@ async def lifespan(app: FastAPI):
         logger.exception("mt5_bridge_startup_failed")
         app.state.mt5_bridge = None
 
+    # --- Live Trading Engine (MT5 execution) — created AFTER MT5 bridge is up ---
+    live_trading = None
+    mt5_bridge_instance = getattr(app.state, "mt5_bridge", None)
+    if mt5_bridge_instance and mt5_bridge_instance.is_connected:
+        live_trading = LiveTradingEngine(mt5_bridge_instance)
+        app.state.live_trading = live_trading
+        manager.live_trading = live_trading
+
+        async def _live_event_handler(event: dict) -> None:
+            await manager.broadcast("market", event)
+        live_trading.set_event_handler(_live_event_handler)
+        logger.info("live_trading_engine_created")
+    else:
+        app.state.live_trading = None
+        logger.info("live_trading_not_available_mt5_not_connected")
+
+    # Wire bot signals — routes to paper OR live MT5 based on bot config
+    async def _bot_signal_handler(signal: dict) -> None:
+        action = signal.get("action", "")
+        price = signal.get("price", 0)
+        volume = signal.get("volume", 0.1)
+        symbol = signal.get("symbol", "")
+        bot_name = signal.get("bot", "")
+        live_mode = signal.get("live_mode", False)
+        order_executed = False
+
+        if action and symbol and volume > 0:
+            if live_mode and live_trading and live_trading.enabled:
+                try:
+                    result = await live_trading.send_market_order(
+                        symbol=symbol,
+                        side=action,
+                        volume=volume,
+                        price=price,
+                        comment=f"bot_{bot_name}",
+                        reason=f"bot_{bot_name}",
+                    )
+                    retcode = result.get("retcode", -1)
+                    if retcode == 10009:
+                        order_executed = True
+                        logger.info("bot_live_order_filled", symbol=symbol, action=action,
+                                    volume=volume, bot=bot_name, deal=result.get("deal"))
+                    else:
+                        logger.warning("bot_live_order_failed", symbol=symbol, action=action,
+                                       error=result.get("error"), bot=bot_name)
+                except Exception as exc:
+                    logger.exception("bot_live_order_error", symbol=symbol, action=action, bot=bot_name)
+            else:
+                try:
+                    result = await paper_trading.create_order(
+                        symbol=symbol,
+                        side=action,
+                        order_type="market",
+                        quantity=volume,
+                        price=price,
+                        reason=f"bot_{bot_name}",
+                    )
+                    if "error" in result:
+                        logger.warning("bot_order_failed", symbol=symbol, action=action, error=result["error"])
+                    else:
+                        order_executed = True
+                        logger.info("bot_order_created", symbol=symbol, action=action, volume=volume)
+                except Exception as exc:
+                    logger.exception("bot_order_error", symbol=symbol, action=action, error=str(exc))
+
+        signal["order_executed"] = order_executed
+        await manager.broadcast("market", signal)
+
+    # Retrieve the bot orchestrator and set the handler
+    existing_orchestrator = getattr(app.state, "bot_orchestrator", None)
+    if existing_orchestrator:
+        existing_orchestrator.set_signal_handler(_bot_signal_handler)
+
     yield
 
     _partial_task.cancel()
@@ -296,6 +381,8 @@ async def lifespan(app: FastAPI):
         await paper_trading_db.close()
     except Exception:
         pass
+    # Close shared Binance HTTP client pool
+    await close_shared_client()
     logger.info("aegis_terminal_shutdown")
 
 
@@ -307,7 +394,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://localhost:80", "http://localhost:3000", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

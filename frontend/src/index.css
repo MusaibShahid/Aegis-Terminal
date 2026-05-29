@@ -19,8 +19,8 @@
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background: #0a0b14;
-    color: #c8cae0;
+    background: #0b0d17;
+    color: #e1e4ed;
     overflow: hidden;
     user-select: none;
   }
@@ -29,7 +29,7 @@
     user-select: text;
   }
 
-  /* Custom scrollbar - dark trading terminal style */
+  /* Scrollbar */
   ::-webkit-scrollbar {
     width: 5px;
     height: 5px;
@@ -40,19 +40,18 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #1e2048;
+    background: #1e2240;
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #2a2d5a;
+    background: #2a2f55;
   }
 
   ::-webkit-scrollbar-corner {
     background: transparent;
   }
 
-  /* Hide scrollbar for horizontal scrollable elements */
   .scrollbar-none {
     -ms-overflow-style: none;
     scrollbar-width: none;
@@ -61,10 +60,33 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+
+  ::selection {
+    background: rgba(59, 130, 246, 0.3);
+    color: #fff;
+  }
+
+  *:focus-visible {
+    outline: 1px solid rgba(59, 130, 246, 0.5);
+    outline-offset: 1px;
+  }
+
+  /* Force dark mode on all selects and options — browser defaults override Tailwind */
+  select, select option, select optgroup {
+    background-color: #0f1120;
+    color: #e1e4ed;
+  }
+
+  select option:hover,
+  select option:checked,
+  select option:focus {
+    background-color: #1c1f34;
+    color: #e1e4ed;
+  }
 }
 
 @layer components {
-  /* Glass morphism card */
+  /* ─── Glass Cards ──────────────────────────────────────────── */
   .glass-card {
     background: rgba(255, 255, 255, 0.03);
     backdrop-filter: blur(12px);
@@ -74,7 +96,7 @@
   }
 
   .glass-card-hover {
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
   }
 
   .glass-card-hover:hover {
@@ -82,30 +104,212 @@
     border-color: rgba(255, 255, 255, 0.1);
   }
 
-  /* Price movement animations */
-  .flash-green {
-    animation: flashGreen 0.6s ease-out;
+  /* ─── Inputs & Selects ────────────────────────────────────── */
+  .input-field {
+    background: #0f1120;
+    border: 1px solid #1e2240;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #e1e4ed;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
 
-  .flash-red {
-    animation: flashRed 0.6s ease-out;
+  .input-field::placeholder {
+    color: #5c6077;
   }
 
-  /* Tabular numbers for financial data */
-  .tabular-nums {
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum";
+  .input-field:focus {
+    outline: none;
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
   }
 
-  /* Gradient text */
+  .select-field {
+    background: #0f1120;
+    border: 1px solid #1e2240;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: #e1e4ed;
+    appearance: none;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .select-field:focus {
+    outline: none;
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
+
+  /* Legacy aliases */
+  .trade-input {
+    @apply input-field;
+  }
+
+  .trade-select {
+    @apply select-field;
+  }
+
+  /* ─── Buttons ─────────────────────────────────────────────── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+
+  .btn:active {
+    transform: scale(0.97);
+  }
+
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    @apply btn;
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+    border-color: rgba(59, 130, 246, 0.25);
+  }
+
+  .btn-primary:hover {
+    background: rgba(59, 130, 246, 0.25);
+    border-color: rgba(59, 130, 246, 0.4);
+  }
+
+  .btn-ghost {
+    @apply btn;
+    background: transparent;
+    color: #8b90a5;
+  }
+
+  .btn-ghost:hover {
+    color: #e1e4ed;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  .btn-buy {
+    @apply btn;
+    background: rgba(34, 197, 94, 0.12);
+    color: #22c55e;
+    border-color: rgba(34, 197, 94, 0.25);
+  }
+
+  .btn-buy:hover {
+    background: rgba(34, 197, 94, 0.22);
+    border-color: rgba(34, 197, 94, 0.4);
+  }
+
+  .btn-sell {
+    @apply btn;
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.25);
+  }
+
+  .btn-sell:hover {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: rgba(239, 68, 68, 0.4);
+  }
+
+  /* ─── Badges ──────────────────────────────────────────────── */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 4px;
+    letter-spacing: 0.02em;
+  }
+
+  .badge-green {
+    @apply badge;
+    background: rgba(34, 197, 94, 0.12);
+    color: #22c55e;
+  }
+
+  .badge-red {
+    @apply badge;
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+  }
+
+  .badge-blue {
+    @apply badge;
+    background: rgba(59, 130, 246, 0.12);
+    color: #3b82f6;
+  }
+
+  .badge-yellow {
+    @apply badge;
+    background: rgba(245, 158, 11, 0.12);
+    color: #f59e0b;
+  }
+
+  /* ─── Tabs ────────────────────────────────────────────────── */
+  .tab-active {
+    color: #3b82f6;
+    border-bottom: 2px solid #3b82f6;
+    background: rgba(59, 130, 246, 0.05);
+  }
+
+  .tab-inactive {
+    color: #5c6077;
+    border-bottom: 2px solid transparent;
+  }
+
+  .tab-inactive:hover {
+    color: #e1e4ed;
+    border-bottom-color: #2a2f55;
+  }
+
+  /* ─── Modals ──────────────────────────────────────────────── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+  }
+
+  .modal-content {
+    background: #161928;
+    border: 1px solid #1e2240;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    animation: scaleIn 0.15s ease-out;
+  }
+
+  /* ─── Gradient Text ───────────────────────────────────────── */
   .text-gradient {
-    background: linear-gradient(135deg, #4d7cff, #00d4ff);
+    background: linear-gradient(135deg, #3b82f6, #06b6d4);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
 
-  /* Shimmer loading effect */
+  /* ─── Tabular Numbers ─────────────────────────────────────── */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  /* ─── Loading Shimmer ─────────────────────────────────────── */
   .shimmer-loading {
     background: linear-gradient(
       90deg,
@@ -116,101 +320,16 @@
     background-size: 200% 100%;
     animation: shimmer 2s infinite linear;
   }
-
-  /* Input/select base styling */
-  .trade-input {
-    @apply bg-[#0f1120] border border-surface-border rounded-md px-2.5 py-1.5 text-sm text-white
-    placeholder-gray-600 transition-all duration-150;
-    &:focus {
-      outline: none;
-      border-color: rgba(77, 124, 255, 0.5);
-      box-shadow: 0 0 12px rgba(77, 124, 255, 0.25);
-    }
-  }
-
-  .trade-select {
-    @apply bg-[#0f1120] border border-surface-border rounded-md px-2.5 py-1.5 text-sm text-white
-    appearance-none cursor-pointer transition-all duration-150;
-    &:focus {
-      outline: none;
-      border-color: rgba(77, 124, 255, 0.5);
-      box-shadow: 0 0 12px rgba(77, 124, 255, 0.25);
-    }
-  }
-
-  /* Button variants */
-  .btn-primary {
-    @apply px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-150
-    active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed;
-  }
-
-  .btn-buy {
-    @apply btn-primary bg-accent-green/15 text-accent-green border border-accent-green/25
-    hover:bg-accent-green/25 hover:border-accent-green/40;
-  }
-
-  .btn-sell {
-    @apply btn-primary bg-accent-red/15 text-accent-red border border-accent-red/25
-    hover:bg-accent-red/25 hover:border-accent-red/40;
-  }
-
-  .btn-ghost {
-    @apply btn-primary bg-transparent text-gray-500;
-    &:hover {
-      color: white;
-      background: rgba(255, 255, 255, 0.08);
-    }
-  }
-
-  /* Tab styling */
-  .tab-active {
-    @apply text-accent-blue border-b-2 border-accent-blue bg-accent-blue/5;
-  }
-
-  .tab-inactive {
-    @apply text-gray-500 border-b-2 border-transparent hover:text-white hover:border-gray-600;
-  }
-
-  /* Badge/Pill */
-  .badge-green {
-    @apply inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold
-    bg-accent-green/10 text-accent-green;
-  }
-
-  .badge-red {
-    @apply inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold
-    bg-accent-red/10 text-accent-red;
-  }
-
-  .badge-blue {
-    @apply inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold
-    bg-accent-blue/10 text-accent-blue;
-  }
-
-  .badge-yellow {
-    @apply inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold
-    bg-accent-yellow/10 text-accent-yellow;
-  }
-
-  /* Modal overlay */
-  .modal-overlay {
-    @apply fixed inset-0 z-50 flex items-center justify-center
-    bg-black/70 backdrop-blur-sm;
-  }
-
-  .modal-content {
-    @apply bg-[#0f1120] border border-surface-border rounded-xl shadow-glass
-    animate-scale-in;
-  }
 }
 
+/* ─── Keyframes ────────────────────────────────────────────── */
 @keyframes flashGreen {
-  0% { background-color: rgba(0, 217, 124, 0.2); }
+  0% { background-color: rgba(34, 197, 94, 0.2); }
   100% { background-color: transparent; }
 }
 
 @keyframes flashRed {
-  0% { background-color: rgba(255, 71, 87, 0.2); }
+  0% { background-color: rgba(239, 68, 68, 0.2); }
   100% { background-color: transparent; }
 }
 
@@ -219,39 +338,267 @@
   100% { background-position: 200% 0; }
 }
 
-@keyframes slideLeft {
-  0% { transform: translateX(100%); }
-  100% { transform: translateX(0); }
+@keyframes scaleIn {
+  0% { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
 }
 
-@keyframes slideLeftOut {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(100%); }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-/* Pane resize handle styling */
+.animate-fade-in {
+  animation: fadeIn 0.15s ease-out;
+}
+
+.flash-green {
+  animation: flashGreen 0.6s ease-out;
+}
+
+.flash-red {
+  animation: flashRed 0.6s ease-out;
+}
+
+/* ─── Pane Grid ────────────────────────────────────────────── */
+.pane-grid {
+  display: grid;
+  gap: 2px;
+  background: #0b0d17;
+}
+
+.pane-cell {
+  position: relative;
+  background: #0f1120;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+
+.pane-cell:hover {
+  border-color: rgba(59, 130, 246, 0.12);
+}
+
+.pane-cell:focus-within {
+  border-color: rgba(59, 130, 246, 0.2);
+}
+
+/* ─── Pane Resize Handles ──────────────────────────────────── */
+.pane-resize-container {
+  position: relative;
+}
+
 .pane-resize-handle {
-  transition: background-color 0.15s ease;
+  position: absolute;
+  background: transparent;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  z-index: 20;
+}
+
+.pane-resize-handle::after {
+  content: '';
+  position: absolute;
+  border-radius: 2px;
+  background: rgba(59, 130, 246, 0.08);
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.pane-resize-handle:hover::after,
+.pane-resize-handle.dragging::after {
+  background: rgba(59, 130, 246, 0.4);
 }
 
 .pane-resize-handle:hover,
-.pane-resize-handle:active {
-  background-color: rgba(77, 124, 255, 0.3) !important;
+.pane-resize-handle.dragging {
+  background-color: rgba(59, 130, 246, 0.06);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.12);
 }
 
-/* Lightweight Charts overrides */
+.pane-resize-handle::after {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+}
+
+.pane-resize-handle:hover::after,
+.pane-resize-handle.dragging::after {
+  height: 60px;
+}
+
+.pane-resize-handle-h::after {
+  width: 40px;
+  height: 2px;
+}
+
+.pane-resize-handle-h:hover::after,
+.pane-resize-handle-h.dragging::after {
+  width: 60px;
+}
+
+.pane-resize-handle-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 24px;
+  border-radius: 2px;
+  background: rgba(59, 130, 246, 0.06);
+  transition: background-color 0.15s ease, height 0.15s ease;
+  pointer-events: none;
+}
+
+.pane-resize-handle:hover .pane-resize-handle-knob,
+.pane-resize-handle.dragging .pane-resize-handle-knob {
+  height: 48px;
+  background: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.3);
+}
+
+.pane-resize-handle-knob-h {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  height: 2px;
+  width: 24px;
+  border-radius: 2px;
+  background: rgba(59, 130, 246, 0.06);
+  transition: background-color 0.15s ease, width 0.15s ease;
+  pointer-events: none;
+}
+
+.pane-resize-handle-h:hover .pane-resize-handle-knob-h,
+.pane-resize-handle-h.dragging .pane-resize-handle-knob-h {
+  width: 48px;
+  background: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.3);
+}
+
+.pane-resize-intersection {
+  position: absolute;
+  border-radius: 50%;
+  background: transparent;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  z-index: 21;
+}
+
+.pane-resize-intersection::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.12);
+  transition: all 0.15s ease;
+}
+
+.pane-resize-intersection:hover::after,
+.pane-resize-intersection.dragging::after {
+  width: 8px;
+  height: 8px;
+  background: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+}
+
+/* ─── Workspace Tabs ───────────────────────────────────────── */
+.workspace-tab-active {
+  background: rgba(59, 130, 246, 0.06);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+.workspace-tab-active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 20%;
+  right: 20%;
+  height: 1.5px;
+  background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+  border-radius: 1px;
+}
+
+/* ─── Chart Overrides ──────────────────────────────────────── */
 .tv-lightweight-charts {
   font-family: "JetBrains Mono", monospace !important;
 }
 
-/* Selection styling */
-::selection {
-  background: rgba(77, 124, 255, 0.3);
-  color: #fff;
+.chart-area {
+  background: linear-gradient(180deg, #0b0d17 0%, #0e1020 100%);
 }
 
-/* Focus ring */
-*:focus-visible {
-  outline: 1px solid rgba(77, 124, 255, 0.5);
-  outline-offset: 1px;
+.oscillator-panel {
+  background: linear-gradient(180deg, rgba(12, 14, 26, 0.8) 0%, rgba(10, 12, 20, 0.9) 100%);
+}
+
+.oscillator-panel:hover {
+  background: linear-gradient(180deg, rgba(15, 17, 30, 0.9) 0%, rgba(12, 14, 24, 0.95) 100%);
+}
+
+/* ─── Pine Script ──────────────────────────────────────────── */
+.pinescript-editor textarea {
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+  tab-size: 2;
+  line-height: 1.6;
+}
+
+.pinescript-editor textarea:focus {
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.08);
+}
+
+/* ─── Scrollbar Variants ───────────────────────────────────── */
+.horizontal-scroll::-webkit-scrollbar {
+  height: 2px;
+}
+
+.horizontal-scroll::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.2);
+  border-radius: 1px;
+}
+
+/* ─── Animations ───────────────────────────────────────────── */
+.price-updated {
+  animation: priceBlink 0.3s ease;
+}
+
+@keyframes priceBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.toolbar-compact .toolbar-label {
+  display: none;
+}
+
+.toolbar-compact:hover .toolbar-label {
+  display: inline;
+}
+
+/* ─── Grid Gap ─────────────────────────────────────────────── */
+.grid-gap-dot {
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.15);
+}
+
+/* ─── Responsive ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .pane-cell {
+    border-radius: 0;
+    border-width: 0 0 1px 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  .pane-cell {
+    border-color: rgba(255, 255, 255, 0.05);
+  }
 }

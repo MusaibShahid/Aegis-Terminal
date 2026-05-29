@@ -13,6 +13,12 @@ class MockResizeObserver {
 (globalThis as any).ResizeObserver = MockResizeObserver;
 
 // ---------------------------------------------------------------------------
+// Polyfill: scrollIntoView (not available in jsdom)
+// ---------------------------------------------------------------------------
+
+Element.prototype.scrollIntoView = vi.fn() as any;
+
+// ---------------------------------------------------------------------------
 // Mock WebSocket — proper class, registered via vi.stubGlobal
 // ---------------------------------------------------------------------------
 
@@ -83,6 +89,7 @@ const mockPane: PaneConfig = {
   interval: "1m",
   indicators: [],
   oscillators: [],
+  pineScripts: [],
   chartType: "candle",
   linked: false,
 };
@@ -126,8 +133,8 @@ describe("StatusBar UI integration", () => {
     useConnectionStore.setState({ status: "connected", latency: 10 });
     render(<StatusBar />);
 
-    // StatusBar shows "Aegis Terminal v0.1.0" always
-    expect(screen.getByText(/v0\.1\.0/i)).toBeDefined();
+    // StatusBar shows version string
+    expect(screen.getByText(/v0\.2\.0/i)).toBeDefined();
   });
 
   it("renders without crashing when all stores are empty", () => {
@@ -146,12 +153,12 @@ describe("Toolbar UI integration", () => {
   it("renders toolbar with link toggle and symbol input", () => {
     render(<Toolbar {...mockToolbarProps()} />);
 
-    // Should show a link toggle and a symbol input
-    const symbolInput = screen.getByDisplayValue("BTCUSDT");
-    expect(symbolInput).toBeDefined();
+    // PairSelector renders the symbol as text inside a button, not as an input value
+    const symbolText = screen.getByText(/BTCUSDT/);
+    expect(symbolText).toBeDefined();
 
-    // The link button should be in the document
-    const linkBtn = screen.getByRole("button", { name: /link/i });
+    // The link toggle button has a title attribute regardless of viewport size
+    const linkBtn = screen.getByTitle(/link all panes/i);
     expect(linkBtn).toBeDefined();
   });
 
@@ -202,8 +209,11 @@ describe("PositionPanel UI integration", () => {
 
     render(<PositionPanel />);
 
-    expect(screen.getByText(/BTCUSDT/i)).toBeDefined();
-    expect(screen.getByText(/BUY/i)).toBeDefined();
+    // Symbol strips "USDT" suffix, side "buy" renders as "L" (long)
+    expect(screen.getByText(/BTC/i)).toBeDefined();
+    expect(screen.getByText("L")).toBeDefined();
+    // Volume formatted to 4 decimals
+    expect(screen.getByText(/0\.5000/)).toBeDefined();
   });
 
   it("renders multiple positions", () => {
@@ -216,8 +226,9 @@ describe("PositionPanel UI integration", () => {
 
     render(<PositionPanel />);
 
-    expect(screen.getByText(/BTCUSDT/i)).toBeDefined();
-    expect(screen.getByText(/ETHUSDT/i)).toBeDefined();
+    // Symbols are stripped of "USDT" suffix
+    expect(screen.getByText(/BTC/i)).toBeDefined();
+    expect(screen.getByText(/ETH/i)).toBeDefined();
   });
 
   it("renders volume value for position", () => {
@@ -229,7 +240,8 @@ describe("PositionPanel UI integration", () => {
 
     render(<PositionPanel />);
 
-    expect(screen.getByText(/2\.5/)).toBeDefined();
+    // Volume formatted to 4 decimal places: 2.5 → "2.5000"
+    expect(screen.getByText(/2\.5000/)).toBeDefined();
   });
 });
 
@@ -241,13 +253,13 @@ describe("BotPanel UI integration", () => {
   it("renders bot panel with no bots initially", () => {
     render(<BotPanel />);
 
-    expect(screen.getByText(/no bots configured/i)).toBeDefined();
+    expect(screen.getByText(/no bots running/i)).toBeDefined();
   });
 
   it("shows create button", () => {
     render(<BotPanel />);
 
-    const newButton = screen.getByText(/\+ New/i);
+    const newButton = screen.getByText(/\+ Create/i);
     expect(newButton).toBeDefined();
   });
 });
@@ -259,7 +271,8 @@ describe("BotPanel UI integration", () => {
 describe("Workspace layout integration", () => {
   it("renders without crashing with a single pane", () => {
     useLayoutStore.setState({
-      panes: [{ id: "pane-1", symbol: "BTCUSDT", interval: "1m", indicators: [], oscillators: [], chartType: "candle", linked: false }],
+      workspaces: [{ id: "ws-1", name: "Default", panes: [{ id: "pane-1", symbol: "BTCUSDT", interval: "1m", indicators: [], oscillators: [], pineScripts: [], chartType: "candle", linked: false }] }],
+      activeWorkspaceId: "ws-1",
       activePaneId: "pane-1",
       linkedMode: false,
     });
@@ -270,10 +283,11 @@ describe("Workspace layout integration", () => {
 
   it("renders multiple panes", () => {
     useLayoutStore.setState({
-      panes: [
-        { id: "pane-1", symbol: "BTCUSDT", interval: "1m", indicators: [], oscillators: [], chartType: "candle", linked: false },
-        { id: "pane-2", symbol: "ETHUSDT", interval: "5m", indicators: [], oscillators: [], chartType: "footprint", linked: false },
-      ],
+      workspaces: [{ id: "ws-1", name: "Default", panes: [
+        { id: "pane-1", symbol: "BTCUSDT", interval: "1m", indicators: [], oscillators: [], pineScripts: [], chartType: "candle", linked: false },
+        { id: "pane-2", symbol: "ETHUSDT", interval: "5m", indicators: [], oscillators: [], pineScripts: [], chartType: "footprint", linked: false },
+      ] }],
+      activeWorkspaceId: "ws-1",
       activePaneId: "pane-1",
       linkedMode: false,
     });
@@ -284,9 +298,10 @@ describe("Workspace layout integration", () => {
 
   it("renders with linked mode enabled", () => {
     useLayoutStore.setState({
-      panes: [
-        { id: "pane-1", symbol: "BTCUSDT", interval: "1m", indicators: [], oscillators: [], chartType: "candle", linked: false },
-      ],
+      workspaces: [{ id: "ws-1", name: "Default", panes: [
+        { id: "pane-1", symbol: "BTCUSDT", interval: "1m", indicators: [], oscillators: [], pineScripts: [], chartType: "candle", linked: false },
+      ] }],
+      activeWorkspaceId: "ws-1",
       activePaneId: "pane-1",
       linkedMode: true,
     });
@@ -294,9 +309,8 @@ describe("Workspace layout integration", () => {
 
     expect(() => render(<Workspace />)).not.toThrow();
 
-    // Should show a "Linked" button
-    const linkedButton = screen.getByText(/linked/i);
-    expect(linkedButton).toBeDefined();
+    // The top-bar link button shows "Link" text (Toolbar's "Link" only renders on desktop)
+    expect(screen.getByText(/Link/)).toBeDefined();
   });
 });
 
@@ -307,10 +321,13 @@ describe("Workspace layout integration", () => {
 describe("Store → UI data flow integration", () => {
   it("StatusBar updates when connection status changes", () => {
     useConnectionStore.setState({ status: "connected", latency: 15 });
-    const { rerender } = render(<StatusBar />);
+    const { container, rerender } = render(<StatusBar />);
 
+    // Connected status label should appear
     expect(screen.getByText(/connected/i)).toBeDefined();
-    expect(screen.getByText(/15/i)).toBeDefined();
+    // Latency value "15" should appear somewhere in the rendered output
+    // (split across child <span> elements, so check container textContent)
+    expect(container.textContent).toMatch(/15\s*ms/);
 
     act(() => {
       useConnectionStore.setState({ status: "disconnected", latency: null });
@@ -335,7 +352,8 @@ describe("Store → UI data flow integration", () => {
     });
     rerender(<PositionPanel />);
 
-    expect(screen.getByText(/BTCUSDT/i)).toBeDefined();
+    // Symbol strips "USDT" suffix → "BTC"
+    expect(screen.getByText(/BTC/i)).toBeDefined();
 
     act(() => {
       useBotStore.setState({ positions: [] });

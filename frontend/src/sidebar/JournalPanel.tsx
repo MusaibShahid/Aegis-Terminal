@@ -56,7 +56,7 @@ export function JournalPanel() {
       {/* Entry list */}
       <div className="flex-1 overflow-y-auto p-1 space-y-1">
         {entries.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-600 gap-2 p-4">
+          <div className="flex flex-col items-center justify-center h-full text-text-muted gap-2 p-4">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-40">
               <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
             </svg>
@@ -70,7 +70,7 @@ export function JournalPanel() {
                   {entry.symbol && (
                     <span className="badge-blue">{entry.symbol}</span>
                   )}
-                  <span className="text-[9px] text-gray-700 font-mono">
+                  <span className="text-[9px] text-text-muted font-mono">
                     {new Date(entry.created_at).toLocaleString("en-US", {
                       month: "short",
                       day: "numeric",
@@ -80,17 +80,17 @@ export function JournalPanel() {
                   </span>
                 </div>
                 <button
-                  className="text-gray-700 hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all text-[9px] p-0.5"
+                  className="text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all text-[9px] p-0.5"
                   onClick={() => deleteEntry(entry.id)}
                 >
                   ✕
                 </button>
               </div>
-              <p className="text-gray-400 text-[10px] whitespace-pre-wrap leading-relaxed">{entry.notes}</p>
+              <p className="text-text-secondary text-[10px] whitespace-pre-wrap leading-relaxed">{entry.notes}</p>
               {entry.tags && entry.tags.length > 0 && (
                 <div className="flex gap-1 mt-1">
                   {entry.tags.map((tag) => (
-                    <span key={tag} className="text-[8px] text-gray-600 bg-gray-800/50 px-1 py-0.5 rounded">
+                    <span key={tag} className="text-[8px] text-text-muted bg-gray-800/50 px-1 py-0.5 rounded">
                       #{tag}
                     </span>
                   ))}

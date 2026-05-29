@@ -20,11 +20,19 @@ export const useMarketStore = create<MarketState>((set) => ({
     set((s) => {
       const key = `${symbol}:${interval}`;
       const existing = s.candles[key] ?? [];
-      const updated =
-        existing.length > 0 && existing[existing.length - 1].time === candle.time
-          ? [...existing.slice(0, -1), candle]
-          : [...existing, candle];
-      return { candles: { ...s.candles, [key]: updated.slice(-1000) } };
+      let updated: Candle[];
+      if (existing.length > 0 && existing[existing.length - 1].time === candle.time) {
+        // Same time bucket — create new array with updated last element
+        updated = [...existing.slice(0, -1), candle];
+      } else {
+        // New candle — always create a new array (never mutate in place)
+        if (existing.length >= 1000) {
+          updated = [...existing.slice(existing.length - 999), candle];
+        } else {
+          updated = [...existing, candle];
+        }
+      }
+      return { candles: { ...s.candles, [key]: updated } };
     }),
 
   updateQuote: (symbol, quote) =>

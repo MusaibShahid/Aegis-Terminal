@@ -1,0 +1,93 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────────────────────────────
+# Aegis Terminal — Load Testing Stack
+# ──────────────────────────────────────────────────────────────────────
+#
+# Usage:
+#   # Start the production stack in the background
+#   docker compose up -d
+#
+#   # Run load tests (headless, 50 users for 2 minutes)
+#   docker compose -f docker-compose.loadtest.yml up \
+#       --abort-on-container-exit
+#
+#   # Run with web UI at http://localhost:8089
+#   docker compose -f docker-compose.loadtest.yml up \
+#       -d locust-web
+#   # Open http://localhost:8089, set 50 users / 5 spawn rate, start
+#
+#   # Custom headless run
+#   docker compose -f docker-compose.loadtest.yml run --rm locust \
+#       --headless -u 100 -r 10 --run-time 3m \
+#       --html /data/report.html --csv /data/report \
+#       --host=http://backend:8000
+#     # ^^^ reports written to ./loadtest_data/ on the host
+#
+#   # Tear down
+#   docker compose -f docker-compose.loadtest.yml down
+# ──────────────────────────────────────────────────────────────────────
+
+services:
+  # ── Locust master (web UI at :8089) ──────────────────────────────
+  locust-master:
+    image: locustio/locust:latest
+    ports:
+      - "8089:8089"  # Web UI
+    volumes:
+      - ./locustfile.py:/mnt/locust/locustfile.py:ro
+      - ./loadtest_data:/data  # HTML/CSV reports
+    environment:
+      - LOCUST_LOCUSTFILE=/mnt/locust/locustfile.py
+      - LOCUST_HOST=http://backend:8000
+      - LOCUST_WEB_PORT=8089
+    command: ["--master"]
+    networks:
+      - aegis-loadtest
+      - aegis-net
+
+  # ── Locust worker (auto-scaled, one per core) ────────────────────
+  locust-worker:
+    image: locustio/locust:latest
+    volumes:
+      - ./locustfile.py:/mnt/locust/locustfile.py:ro
+    environment:
+      - LOCUST_LOCUSTFILE=/mnt/locust/locustfile.py
+      - LOCUST_HOST=http://backend:8000
+      - LOCUST_MASTER_HOST=locust-master
+    command: ["--worker"]
+    deploy:
+      replicas: 2  # scale this up for more load
+    networks:
+      - aegis-loadtest
+      - aegis-net
+
+  # ── Headless runner (no web UI, runs once and exits) ─────────────
+  locust:
+    image: locustio/locust:latest
+    profiles:
+      - headless  # not started by default
+    volumes:
+      - ./locustfile.py:/mnt/locust/locustfile.py:ro
+      - ./loadtest_data:/data
+    environment:
+      - LOCUST_LOCUSTFILE=/mnt/locust/locustfile.py
+      - LOCUST_HOST=http://backend:8000
+    command:
+      - "--headless"
+      - "-u" , "50"
+      - "-r", "5"
+      - "--run-time", "2m"
+      - "--html", "/data/report.html"
+      - "--csv", "/data/report"
+      - "--stop-timeout", "10"
+    networks:
+      - aegis-loadtest
+      - aegis-net
+
+networks:
+  aegis-net:
+    name: aegis-net
+    external: true
+  aegis-loadtest:
+    name: aegis-loadtest

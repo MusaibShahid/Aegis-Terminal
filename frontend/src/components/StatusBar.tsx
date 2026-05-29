@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Wifi, WifiOff, Clock, Activity } from "lucide-react";
 import { useConnectionStore } from "../stores/useConnectionStore";
 import { useResponsive } from "../hooks/useResponsive";
 
@@ -18,50 +19,54 @@ export function StatusBar() {
     return () => clearInterval(id);
   }, []);
 
-  const statusConfig = {
-    connected: { color: "bg-accent-green", glow: "shadow-glow-green", label: "Connected" },
-    connecting: { color: "bg-accent-yellow", glow: "shadow-[0_0_6px_rgba(255,197,61,0.5)]", label: "Connecting" },
-    disconnected: { color: "bg-accent-red", glow: "shadow-[0_0_6px_rgba(255,71,87,0.5)]", label: "Disconnected" },
-  } as const;
-
-  const cfg = statusConfig[status] || statusConfig.disconnected;
+  const isConnected = status === "connected";
+  const isConnecting = status === "connecting";
 
   return (
-    <div className="h-6 lg:h-7 bg-surface-alt/60 backdrop-blur-sm border-t border-surface-border flex items-center px-1.5 lg:px-3 text-[10px] lg:text-xs text-gray-500 gap-1.5 lg:gap-3 shrink-0 select-none">
-      {/* Connection status */}
-      <div className="flex items-center gap-1 lg:gap-1.5 group">
-        <span className={`w-1.5 lg:w-2 h-1.5 lg:h-2 rounded-full ${cfg.color} ${cfg.glow} transition-all duration-300`} />
-        <span className="text-[9px] lg:text-[10px] text-gray-400 group-hover:text-white transition-colors hidden sm:inline">{cfg.label}</span>
+    <div className="h-7 bg-surface-alt border-t border-surface-border flex items-center px-3 text-[11px] text-text-secondary gap-4 shrink-0 select-none">
+      {/* Connection */}
+      <div className="flex items-center gap-1.5">
+        <span className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
+          isConnected ? "bg-accent-green shadow-glow-green" :
+          isConnecting ? "bg-accent-yellow animate-pulse" :
+          "bg-accent-red shadow-glow-red"
+        }`} />
+        <span className="text-[10px] text-text-secondary hidden sm:inline">
+          {isConnected ? "Connected" : isConnecting ? "Connecting..." : "Disconnected"}
+        </span>
+        {isConnected ? <Wifi size={10} className="text-accent-green opacity-60" /> : <WifiOff size={10} className="text-accent-red opacity-60" />}
       </div>
 
       {/* Latency */}
       {latency !== null && (
-        <span className="text-[9px] lg:text-[10px] font-mono text-gray-500 hidden sm:inline">
-          <span className="text-gray-600">⏱</span> {latency}<span className="text-gray-600">ms</span>
-        </span>
+        <div className="flex items-center gap-1 text-[10px] font-mono text-text-tertiary hidden sm:flex">
+          <Activity size={10} />
+          <span>{latency}<span className="text-text-muted">ms</span></span>
+        </div>
       )}
 
       {/* Clock */}
-      <span className="text-[9px] lg:text-[10px] font-mono text-gray-600">
-        {clock}
-      </span>
+      <div className="flex items-center gap-1 text-[10px] font-mono text-text-tertiary">
+        <Clock size={10} />
+        <span className="tabular-nums">{clock}</span>
+      </div>
 
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Feature indicators */}
-      <div className="flex items-center gap-1.5 lg:gap-2 text-[8px] lg:text-[9px] text-gray-600">
-        <span className={`inline-block w-1 lg:w-1.5 h-1 lg:h-1.5 rounded-full ${status === "connected" ? "bg-accent-green animate-pulse-slow" : "bg-gray-700"}`} />
+      {/* WS indicator */}
+      <div className="flex items-center gap-1.5 text-[9px] text-text-muted">
+        <span className={`w-1 h-1 rounded-full ${isConnected ? "bg-accent-green animate-pulse-slow" : "bg-text-muted"}`} />
         <span className="hidden sm:inline">WS</span>
       </div>
 
-      {/* Latency badge — always visible on small screens */}
+      {/* Mobile latency */}
       {latency !== null && responsive.isMobile && (
-        <span className="text-[9px] font-mono text-gray-600">{latency}ms</span>
+        <span className="text-[9px] font-mono text-text-muted">{latency}ms</span>
       )}
 
       {/* Version */}
-      <span className="text-[9px] lg:text-[10px] text-gray-600 font-mono">v0.2.0</span>
+      <span className="text-[10px] text-text-muted font-mono">v0.2.0</span>
     </div>
   );
 }

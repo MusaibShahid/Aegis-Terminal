@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useMarketStore } from "../stores/useMarketStore";
+import { cachedFetch } from "../utils/requestCache";
 import type { Candle } from "../types";
 
 const INTERVAL_SECONDS: Record<string, number> = {
@@ -12,7 +13,6 @@ function validateCandle(c: any, interval: string): boolean {
 
   const { open, high, low, close } = c;
 
-  // OHLC consistency
   if (high < Math.max(open, close)) {
     console.warn(`[candle] High ${high} < max(Open,Close) ${Math.max(open, close)}`, c.time);
     return false;
@@ -32,12 +32,27 @@ function validateCandle(c: any, interval: string): boolean {
 
   // Time boundary alignment
   if (c.time % (INTERVAL_SECONDS[interval] * 1000) !== 0) {
+    if (c.time % (INTERVAL_SECONDS[interval] * 1000) < 100) return true; // ~100ms tolerance
     console.warn(`[candle] Timestamp ${c.time} not aligned to ${interval} boundary`, c.time);
     return false;
   }
 
   if (c.volume < 0) return false;
   return true;
+}
+
+/** TTL for candle history: short for 1m, longer for higher TFs. */
+function candleTTL(interval: string): number {
+  switch (interval) {
+    case "1m": return 10_000;  // 10s
+    case "5m": return 30_000;  // 30s
+    case "15m":
+    case "30m": return 60_000; // 1m
+    case "1h":
+    case "2h":
+    case "4h": return 300_000; // 5m
+    default: return 600_000;    // 10m
+  }
 }
 
 export function useCandleHistory(symbol: string, interval: string) {
@@ -49,12 +64,17 @@ export function useCandleHistory(symbol: string, interval: string) {
     if (key === prevRef.current) return;
     prevRef.current = key;
 
-    // Clear stale data for this key immediately
-    setCandles(symbol, interval, []);
-
     let cancelled = false;
-    fetch(`/api/history?symbol=${symbol}&interval=${interval}&limit=500`)
-      .then((r) => r.json())
+
+    const url = `/api/history?symbol=${symbol}&interval=${interval}&limit=500`;
+    const ttl = candleTTL(interval);
+
+    // Use cachedFetch with localStorage persistence so history survives reload
+    cachedFetch<{ candles: Candle[] }>(url, {
+      ttl,
+      persistKey: "candle-history",
+      maxPersistAge: 300_000, // 5 min max age for persisted data
+    })
       .then((data) => {
         if (cancelled) return;
         if (!data.candles || !Array.isArray(data.candles)) {
@@ -80,3 +100,4 @@ export function useCandleHistory(symbol: string, interval: string) {
     };
   }, [symbol, interval, setCandles]);
 }
+

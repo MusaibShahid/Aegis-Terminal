@@ -19,12 +19,12 @@ export function ToolsDrawer() {
         <div className="flex items-center justify-between px-4 py-3 border-b border-surface-border/50 shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gradient">Tools</span>
-            <span className="text-[9px] text-gray-600 font-mono bg-glass-white px-1.5 py-0.5 rounded">
+            <span className="text-[9px] text-text-muted font-mono bg-surface-hover px-1.5 py-0.5 rounded">
               {tools.filter((t) => t.enabled).length}/{tools.length}
             </span>
           </div>
           <button
-            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-glass-white-hover transition-all"
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-text-tertiary hover:text-text-primary hover:bg-surface-hover transition-all"
             onClick={() => setDrawerOpen(false)}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -42,11 +42,11 @@ export function ToolsDrawer() {
             return (
               <div key={category}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[9px] text-gray-500 uppercase tracking-widest font-semibold">
+                  <span className="text-[9px] text-text-tertiary uppercase tracking-widest font-semibold">
                     {TOOL_CATEGORY_LABELS_MAP[category]}
                   </span>
                   <div className="flex-1 h-px bg-surface-border/30" />
-                  <span className="text-[9px] text-gray-700 font-mono">
+                  <span className="text-[9px] text-text-muted font-mono">
                     {categoryTools.filter((t) => t.enabled).length}/{categoryTools.length}
                   </span>
                 </div>
@@ -57,8 +57,8 @@ export function ToolsDrawer() {
                       key={tool.id}
                       className={`flex items-center gap-2 px-2.5 py-2 rounded-lg text-[10px] transition-all duration-150 border ${
                         tool.enabled
-                          ? "bg-accent-blue/[0.06] border-accent-blue/20 text-white hover:bg-accent-blue/[0.1]"
-                          : "bg-glass-white border-transparent text-gray-500 hover:text-gray-400 hover:bg-glass-white-hover"
+                          ? "bg-accent-blue/[0.06] border-accent-blue/20 text-text-primary hover:bg-accent-blue/[0.1]"
+                          : "bg-surface-hover border-transparent text-text-tertiary hover:text-text-secondary hover:bg-surface-hover"
                       }`}
                       onClick={() => toggleTool(tool.id)}
                     >
@@ -76,7 +76,7 @@ export function ToolsDrawer() {
                           </svg>
                         )}
                       </span>
-                      <span className={tool.enabled ? "text-white/80" : "text-gray-500"}>
+                      <span className={tool.enabled ? "text-text-secondary" : "text-text-tertiary"}>
                         {tool.icon && <span className="mr-1">{tool.icon}</span>}
                         {tool.label}
                       </span>
@@ -91,12 +91,12 @@ export function ToolsDrawer() {
         {/* Footer */}
         <div className="px-3 py-2 border-t border-surface-border/50 flex items-center justify-between shrink-0">
           <button
-            className="text-[9px] text-gray-600 hover:text-white px-2 py-1 rounded hover:bg-glass-white-hover transition-all"
+            className="text-[9px] text-text-muted hover:text-text-primary px-2 py-1 rounded hover:bg-surface-hover transition-all"
             onClick={() => useToolStore.getState().resetTools()}
           >
             Reset All
           </button>
-          <span className="text-[9px] text-gray-700">
+          <span className="text-[9px] text-text-muted">
             Tools persist across sessions
           </span>
         </div>

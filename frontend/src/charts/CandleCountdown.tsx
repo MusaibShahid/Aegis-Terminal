@@ -18,13 +18,13 @@ export function PriceAxisCountdown({ symbol, interval, price }: Props) {
   return (
     <div className="glass-card rounded px-1.5 py-0.5 flex items-center gap-1.5 text-[9px] font-mono animate-fade-in">
       <span className={`w-1.5 h-1.5 rounded-full ${isLow ? "bg-accent-red animate-pulse-slow" : "bg-accent-blue/60"}`} />
-      <span className={isLow ? "text-accent-red" : "text-gray-500"}>
+      <span className={isLow ? "text-accent-red" : "text-text-tertiary"}>
         {countdown.remaining_seconds}s
       </span>
       {price != null && (
         <>
-          <span className="text-gray-700">|</span>
-          <span className="text-gray-500 tabular-nums">
+          <span className="text-text-muted">|</span>
+          <span className="text-text-tertiary tabular-nums">
             ${price.toFixed(2)}
           </span>
         </>

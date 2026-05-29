@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import Any
@@ -32,12 +33,16 @@ class ConnectionManager:
         logger.info("ws_disconnected", channel=channel)
 
     async def broadcast(self, channel: str, data: dict[str, Any]) -> None:
+        connections = list(self._connections.get(channel, set()))
+        if not connections:
+            return
         payload = json.dumps(data)
-        for ws in list(self._connections.get(channel, set())):
+        async def _send(ws: WebSocket) -> None:
             try:
                 await ws.send_text(payload)
             except Exception:
                 await self.disconnect(ws)
+        await asyncio.gather(*[_send(ws) for ws in connections])
 
     async def send_to(self, ws: WebSocket, data: dict[str, Any]) -> None:
         try:

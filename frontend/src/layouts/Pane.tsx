@@ -1,8 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { IChartApi, ISeriesApi } from "lightweight-charts";
+import { Maximize2, Minimize2 } from "lucide-react";
 
 import { PriceAxisCountdown } from "../charts/CandleCountdown";
 import { CandleTooltip } from "../charts/CandleTooltip";
-import { ChartPane, type ChartPaneHandle } from "../charts/ChartPane";
+import { ChartPane, type ChartPaneHandle, type TradeMarker } from "../charts/ChartPane";
 import { ChartTimer } from "../charts/ChartTimer";
 import { DeltaChart } from "../charts/DeltaChart";
 import { DOMLadder } from "../charts/DOMLadder";
@@ -10,6 +12,7 @@ import { DrawingLayer } from "../charts/DrawingLayer";
 import { DrawingToolbar } from "../charts/DrawingTools";
 import { FeatureGuard } from "../components/FeatureGuard";
 import { FootprintChart } from "../charts/FootprintChart";
+import { FootprintOverlay } from "../charts/FootprintOverlay";
 import { HeatmapChart } from "../charts/HeatmapChart";
 import { OscillatorPanel } from "../charts/OscillatorPanel";
 import { SMCOverlay } from "../charts/SMCOverlay";
@@ -24,17 +27,20 @@ import { useIndicatorLines } from "../hooks/useIndicatorLines";
 import { useLayoutStore } from "../stores/useLayoutStore";
 import { useMarketStore } from "../stores/useMarketStore";
 import { useToolStore } from "../stores/useToolStore";
-import type { CandleMeta, PaneConfig } from "../types";
+import { useBotStore } from "../stores/useBotStore";
+import { usePaperTradingStore } from "../stores/usePaperTradingStore";
+import { PineScriptPanel, computePineScriptValues } from "../components/PineScriptPanel";
+import type { CandleMeta, PaneConfig, OscillatorConfig } from "../types";
 
 interface Props {
   pane: PaneConfig;
-  height: number;
   containerWidth?: number;
-  resizeKey?: number;
+  containerHeight?: number;
 }
 
 const CHART_TYPE_LABELS: Record<string, string> = {
   candle: "Candle",
+  candle_footprint: "Candle+FP",
   footprint: "Footprint",
   delta: "Delta",
   depth: "DOM",
@@ -42,8 +48,15 @@ const CHART_TYPE_LABELS: Record<string, string> = {
   vpvr: "VPVR",
 };
 
-export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
+const CHART_TYPES = Object.entries(CHART_TYPE_LABELS).map(([k, v]) => ({
+  value: k as PaneConfig["chartType"],
+  label: v,
+}));
+
+export function Pane({ pane, containerWidth = 800, containerHeight = 600 }: Props) {
   const chartHandleRef = useRef<ChartPaneHandle>(null);
+  const [chartReady, setChartReady] = useState<{ chart: IChartApi; series: ISeriesApi<"Candlestick"> } | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const updatePane = useLayoutStore((s) => s.updatePane);
   const candles = useMarketStore((s) => s.candles[`${pane.symbol}:${pane.interval}`]);
   const [tooltipVisible, setTooltipVisible] = useState(false);
@@ -51,6 +64,8 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
   const [tooltipCandle, setTooltipCandle] = useState<{ time: number; open: number; high: number; low: number; close: number; volume: number } | null>(null);
   const [tooltipMeta, setTooltipMeta] = useState<CandleMeta | undefined>();
   const [currentPrice, setCurrentPrice] = useState(0);
+  const [paneHeight, setPaneHeight] = useState(300);
+  const [fullscreenSize, setFullscreenSize] = useState({ width: window.innerWidth, height: window.innerHeight });
 
   const isToolEnabled = useToolStore((s) => s.isToolEnabled);
 
@@ -58,93 +73,238 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
     (s) => s.countdowns[`${pane.symbol}:${pane.interval}`]
   );
 
-  const { exportToPng } = useChartExport();
+  const exportToPngRef = useRef(useChartExport().exportToPng);
+  exportToPngRef.current = useChartExport().exportToPng;
   const chartContainerRef = useRef<HTMLDivElement>(null);
+
+  // Store critical mutable values in refs for stable callbacks
+  const candlesRef = useRef(candles);
+  candlesRef.current = candles;
+  const paneRef = useRef<HTMLDivElement>(null);
+  const updatePaneRef = useRef(updatePane);
+  updatePaneRef.current = updatePane;
+  const indicatorsRef = useRef(pane.indicators);
+  indicatorsRef.current = pane.indicators;
+  const oscillatorsRef = useRef(pane.oscillators);
+  oscillatorsRef.current = pane.oscillators;
+  const paneIdRef = useRef(pane.id);
+  paneIdRef.current = pane.id;
 
   useCandleHistory(pane.symbol, pane.interval);
   useFootprint(pane.symbol);
 
   const indicatorLines = useIndicatorLines(candles ?? [], pane.indicators);
 
-  const onAddIndicator = useCallback(
-    (paneId: string, type: string) => {
-      const ind = { id: `${type}-${Date.now()}`, type, paneId, params: {} } as any;
-      updatePane(paneId, { indicators: [...pane.indicators, ind] });
-    },
-    [pane.indicators, updatePane]
-  );
+  // Compute Pine Script indicator values for chart overlays
+  const pineScriptOverlays = useMemo(() => {
+    if (!candles || candles.length === 0 || !pane.pineScripts?.length) return [];
+    return computePineScriptValues(pane.pineScripts, candles);
+  }, [candles, pane.pineScripts]);
 
-  const onAddOscillator = useCallback(
-    (paneId: string, type: string) => {
-      const osc = { id: `${type}-${Date.now()}`, type, params: {} } as any;
-      updatePane(paneId, { oscillators: [...pane.oscillators, osc] });
-    },
-    [pane.oscillators, updatePane]
-  );
+  // Merge Pine Script overlays into indicator lines for chart rendering
+  const allIndicatorLines = useMemo(() => {
+    const lines = [...indicatorLines];
+    for (const ps of pineScriptOverlays) {
+      if (ps.overlay && ps.values.length > 0) {
+        const data = ps.values
+          .map((v, i) => ({ time: candles?.[i]?.time ?? i * 1000, value: v ?? 0 }))
+          .filter((d) => d.value !== 0);
+        if (data.length) {
+          lines.push({ id: ps.id, data, color: ps.color });
+        }
+      }
+    }
+    return lines;
+  }, [indicatorLines, pineScriptOverlays, candles]);
 
-  const removeOscillator = useCallback(
-    (oscId: string) => {
-      updatePane(pane.id, {
-        oscillators: pane.oscillators.filter((o) => o.id !== oscId),
+  // Bot + Paper trade markers for chart
+  const botSignals = useBotStore((s) => s.signals);
+  const paperTrades = usePaperTradingStore((s) => s.closedTrades);
+  const tradeMarkers: TradeMarker[] = useMemo(() => {
+    const markers: TradeMarker[] = [];
+    for (const sig of botSignals) {
+      if (sig.symbol === pane.symbol) {
+        markers.push({ time: sig.time, action: sig.action, price: sig.price, label: sig.bot });
+      }
+    }
+    for (const trade of paperTrades) {
+      if (trade.symbol === pane.symbol) {
+        markers.push({ time: trade.opened_at, action: trade.side === "long" ? "buy" : "sell", price: trade.entry_price, label: "P" });
+        if (trade.closed_at) {
+          markers.push({ time: trade.closed_at, action: trade.side === "long" ? "sell" : "buy", price: trade.exit_price, label: "P" });
+        }
+      }
+    }
+    return markers.sort((a, b) => a.time - b.time);
+  }, [botSignals, paperTrades, pane.symbol]);
+
+  // Track fullscreen window size
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onResize = () => setFullscreenSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener("resize", onResize);
+    onResize();
+    return () => window.removeEventListener("resize", onResize);
+  }, [isFullscreen]);
+
+  // Debounced ResizeObserver — batch dimension updates per animation frame
+  useLayoutEffect(() => {
+    const el = paneRef.current;
+    if (!el) return;
+    let rafId: number;
+    const ro = new ResizeObserver((entries) => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        for (const e of entries) {
+          setPaneHeight(e.contentRect.height);
+        }
       });
-    },
-    [pane.id, pane.oscillators, updatePane]
+    });
+    ro.observe(el);
+    return () => {
+      cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
+  }, []);
+
+  // Effective dimensions — use fullscreen window size when fullscreen
+  const effectiveWidth = isFullscreen ? fullscreenSize.width : containerWidth;
+  const effectiveHeight = isFullscreen ? fullscreenSize.height : containerHeight;
+  const effectivePaneHeight = isFullscreen ? fullscreenSize.height : paneHeight;
+
+  // Recompute chart height whenever pane height or number of oscillators/indicators changes
+  const oscillatorCount = pane.oscillators.length;
+  const indicatorCount = pane.indicators.length;
+
+  const chartHeight = useMemo(() => {
+    const toolbarH = 32;
+    const indicatorH = indicatorCount > 0 ? 28 : 0;
+    const timerH = isToolEnabled("feat_timer") ? 24 : 0;
+    const drawingH = isToolEnabled("feat_drawings") ? 28 : 0;
+    const oscillatorH = oscillatorCount * 80;
+    const totalOverhead = toolbarH + indicatorH + timerH + drawingH + oscillatorH + 1;
+    return Math.max(80, effectivePaneHeight - totalOverhead);
+  }, [effectivePaneHeight, oscillatorCount, indicatorCount, isToolEnabled]);
+
+  // Stable callbacks using refs
+  const onAddIndicator = useCallback((paneId: string, type: string) => {
+    const ind = { id: `${type}-${Date.now()}`, type, paneId, params: {} } as any;
+    updatePaneRef.current(paneId, { indicators: [...indicatorsRef.current, ind] });
+  }, []);
+
+  const onAddOscillator = useCallback((paneId: string, type: string) => {
+    const osc: OscillatorConfig = { id: `${type}-${Date.now()}`, type: type as OscillatorConfig["type"], params: {} };
+    updatePaneRef.current(paneId, { oscillators: [...oscillatorsRef.current, osc] });
+  }, []);
+
+  const removeOscillator = useCallback((oscId: string) => {
+    updatePaneRef.current(paneIdRef.current, {
+      oscillators: oscillatorsRef.current.filter((o) => o.id !== oscId),
+    });
+  }, []);
+
+  const onChangeChartType = useCallback(
+    (type: PaneConfig["chartType"]) => updatePaneRef.current(paneIdRef.current, { chartType: type }),
+    []
   );
 
-  const crosshairHandler = useCallback((price: number, time: number) => {
+  const onExportPng = useCallback(() => {
+    const container = chartHandleRef.current?.container;
+    if (container) exportToPngRef.current(container, `${pane.symbol}_${pane.interval}.png`);
+  }, [pane.symbol, pane.interval]);
+
+  const crosshairHandler = useCallback((price: number, time: number, x?: number, y?: number) => {
     setCurrentPrice(price);
-    if (!candles) return;
-    const c = candles.find((x: any) => x.time === time);
-    if (c) {
-      setTooltipCandle(c);
-      setTooltipPos((prev) => ({ ...prev }));
+    if (time === 0) {
+      setTooltipVisible(false);
+      return;
+    }
+    const currentCandles = candlesRef.current;
+    if (!currentCandles) return;
+    let closest: typeof currentCandles[0] | null = null;
+    let minDist = Infinity;
+    for (const c of currentCandles) {
+      const dist = Math.abs(c.time - time);
+      if (dist < minDist) { minDist = dist; closest = c; }
+    }
+    if (closest && minDist < 60000) {
+      setTooltipCandle(closest);
+      if (x !== undefined && y !== undefined) {
+        setTooltipPos({ x, y });
+      }
       setTooltipVisible(true);
     }
-  }, [candles]);
+  }, []);
 
-  const chartHeight = useMemo(
-    () => Math.max(50, height - 32 - (pane.indicators.length > 0 ? 24 : 0) - 28),
-    [height, pane.indicators.length]
-  );
-
-  // Feature gating using tool store
-  const showSMC = pane.chartType === "candle" && isToolEnabled("feat_smc");
+  // Feature gating
+  const isCandleChart = pane.chartType === "candle" || pane.chartType === "candle_footprint";
+  const showSMC = isCandleChart && isToolEnabled("feat_smc");
   const showDrawings = isToolEnabled("feat_drawings");
   const showCountdown = isToolEnabled("feat_countdown");
   const showTooltip = isToolEnabled("feat_tooltip");
   const showTimer = isToolEnabled("feat_timer");
 
-  return (
-    <div className="flex flex-col h-full overflow-hidden bg-surface/30">
-      <Toolbar
-        pane={pane}
-        onUpdatePane={updatePane}
-        onAddIndicator={onAddIndicator}
-        onAddOscillator={onAddOscillator}
-        onChangeChartType={(type) => updatePane(pane.id, { chartType: type })}
-        chartTypes={Object.entries(CHART_TYPE_LABELS).map(([k, v]) => ({
-          value: k as PaneConfig["chartType"],
-          label: v,
-        }))}
-        onExportPng={() => {
-          const container = chartHandleRef.current?.container;
-          if (container) exportToPng(container, `${pane.symbol}_${pane.interval}.png`);
-        }}
-      />
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => !prev);
+  }, []);
 
-      {/* Countdown row — conditionally shown */}
+  // Fullscreen keyboard shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "F11" || (e.key === "f" && e.ctrlKey && e.shiftKey)) {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+      if (e.key === "Escape" && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isFullscreen, toggleFullscreen]);
+
+  return (
+    <div
+      ref={paneRef}
+      className={`pane-cell flex flex-col overflow-hidden ${
+        isFullscreen
+          ? "fixed inset-0 z-[100] bg-surface border-0 rounded-none"
+          : "h-full"
+      }`}
+    >
+      {/* Toolbar row */}
+      <div className="flex items-center shrink-0">
+        <Toolbar
+          pane={pane}
+          onUpdatePane={updatePane}
+          onAddIndicator={onAddIndicator}
+          onAddOscillator={onAddOscillator}
+          onChangeChartType={onChangeChartType}
+          chartTypes={CHART_TYPES}
+          onExportPng={onExportPng}
+        />
+        <button
+          className="h-8 w-8 flex items-center justify-center text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors shrink-0 border-b border-surface-border"
+          onClick={toggleFullscreen}
+          title={isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen (Ctrl+Shift+F)"}
+        >
+          {isFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+        </button>
+      </div>
+
+      {/* Countdown row */}
       {showTimer && (
         <div className="flex items-center justify-between h-6 px-2 border-b border-surface-border/30 shrink-0">
-          <div className="flex items-center gap-2 text-[10px] text-gray-600 min-w-0">
+          <div className="flex items-center gap-2 text-[10px] text-text-muted min-w-0">
             <span className="font-mono truncate">{pane.symbol}</span>
-            <span className="text-gray-700 shrink-0">•</span>
+            <span className="text-text-muted shrink-0">•</span>
             <span className="font-mono shrink-0">{pane.interval}</span>
           </div>
           <ChartTimer symbol={pane.symbol} interval={pane.interval} />
         </div>
       )}
 
-      {/* Drawing toolbar — conditionally shown */}
+      {/* Drawing toolbar */}
       {showDrawings && <DrawingToolbar />}
 
       {/* Chart area */}
@@ -162,7 +322,7 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
           </FeatureGuard>
         )}
         {pane.chartType === "vpvr" && <VPVRChart symbol={pane.symbol} />}
-        {pane.chartType === "candle" && (
+        {isCandleChart && (
           <>
             <ChartPane
               ref={chartHandleRef}
@@ -170,14 +330,22 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
               symbol={pane.symbol}
               interval={pane.interval}
               height={chartHeight}
-              containerWidth={containerWidth}
-              resizeKey={resizeKey}
+              containerWidth={effectiveWidth}
               onCrosshairMove={crosshairHandler}
-              indicatorLines={indicatorLines}
+              indicatorLines={allIndicatorLines}
+              tradeMarkers={tradeMarkers}
+              onChartReady={(chart, series) => setChartReady({ chart, series })}
             />
-            {showDrawings && <DrawingLayer chartRef={chartHandleRef} paneId={pane.id} symbol={pane.symbol} candles={candles ?? []} />}
+            {pane.chartType === "candle_footprint" && (
+              <FootprintOverlay
+                symbol={pane.symbol}
+                interval={pane.interval}
+                seriesApi={chartReady?.series ?? null}
+                chartApi={chartReady?.chart ?? null}
+              />
+            )}
+            {showDrawings && <DrawingLayer chartRef={chartHandleRef} paneId={pane.id} />}
             {showSMC && <SMCOverlay symbol={pane.symbol} interval={pane.interval} />}
-            {/* Price-axis countdown widget (bottom-right corner) */}
             {showCountdown && paneCountdown && (
               <div className="absolute bottom-2 right-2 z-30">
                 <PriceAxisCountdown
@@ -202,18 +370,21 @@ export function Pane({ pane, height, containerWidth, resizeKey }: Props) {
       </div>
 
       {/* Indicator labels row */}
-      <IndicatorPanel pane={pane} onUpdatePane={updatePane} />
+      <IndicatorPanel pane={pane} />
+
+      {/* Pine Script panel */}
+      <PineScriptPanel paneId={pane.id} candles={candles ?? []} />
 
       {/* Oscillator sub-panels */}
       {pane.oscillators.map((osc) => (
-        <div key={osc.id} className="border-t border-surface-border/30 relative group">
+        <div key={osc.id} className="border-t border-surface-border/20 relative group">
           <button
-            className="absolute top-1 right-1 z-10 text-[9px] text-gray-600 hover:text-accent-red opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-surface/50 rounded px-1 py-0.5"
+            className="absolute top-0.5 right-1 z-10 text-[9px] text-text-muted hover:text-accent-red opacity-0 group-hover:opacity-100 transition-opacity duration-150 bg-surface/70 rounded px-1 py-0.5"
             onClick={() => removeOscillator(osc.id)}
           >
             ✕
           </button>
-          <OscillatorPanel candles={candles ?? []} oscillator={osc} height={70} />
+          <OscillatorPanel candles={candles ?? []} oscillator={osc} height={78} width={effectiveWidth} />
         </div>
       ))}
     </div>

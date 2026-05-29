@@ -5,7 +5,7 @@ import json
 from typing import Any, Callable, Coroutine
 
 import structlog
-from httpx import AsyncClient
+from httpx import AsyncClient, Limits, Timeout
 
 from config import settings
 
@@ -41,31 +41,63 @@ def from_binance_symbol(binance_symbol: str) -> str:
     return REVERSE_MAP.get(binance_symbol.upper(), binance_symbol.upper())
 
 
+# ---------------------------------------------------------------------------
+# Shared AsyncClient with connection pooling — reused across all Binance
+# connectors and one-shot REST calls so TCP connections stay warm.
+# ---------------------------------------------------------------------------
+_shared_client: AsyncClient | None = None
+_client_lock = asyncio.Lock()
+
+
+async def get_shared_client() -> AsyncClient:
+    """Return a module-level shared AsyncClient with keep-alive pooling."""
+    global _shared_client
+    if _shared_client is not None and not _shared_client.is_closed:
+        return _shared_client
+    async with _client_lock:
+        if _shared_client is not None and not _shared_client.is_closed:
+            return _shared_client
+        _shared_client = AsyncClient(
+            limits=Limits(max_keepalive_connections=20, max_connections=100, keepalive_expiry=30.0),
+            timeout=Timeout(30.0, connect=10.0),
+        )
+        logger.info("binance_shared_client_created")
+        return _shared_client
+
+
+async def close_shared_client() -> None:
+    """Close the shared client on shutdown."""
+    global _shared_client
+    if _shared_client and not _shared_client.is_closed:
+        await _shared_client.aclose()
+        _shared_client = None
+        logger.info("binance_shared_client_closed")
+
+
+# ---------------------------------------------------------------------------
+
 class BinanceConnector:
     REST_URL = "https://api.binance.com"
     WS_COMBINED = "wss://stream.binance.com:9443/stream"
 
     def __init__(self) -> None:
-        self._http = AsyncClient()
         self._running = False
         self._tasks: list[asyncio.Task] = []
         self._on_candle: Handler | None = None
         self._on_quote: Handler | None = None
 
-    def set_handlers(self, on_candle: Handler | None = None, on_quote: Handler | None = None) -> None:
-        self._on_candle = on_candle
-        self._on_quote = on_quote
-
-    async def get_klines(self, symbol: str, interval: str = "1m", limit: int = 500) -> list[dict]:
+    @classmethod
+    async def fetch_klines(cls, symbol: str, interval: str = "1m", limit: int = 500) -> list[dict]:
+        """One-shot class method — no need to create a connector instance."""
+        client = await get_shared_client()
         binance_symbol = to_binance_symbol(symbol)
         try:
-            resp = await self._http.get(
-                f"{self.REST_URL}/api/v3/klines",
+            resp = await client.get(
+                f"{cls.REST_URL}/api/v3/klines",
                 params={"symbol": binance_symbol, "interval": interval, "limit": min(limit, 1000)},
             )
             resp.raise_for_status()
-            candles = self._normalize_klines(resp.json())
-            # Stamp each candle with the original requested symbol
+            candles = cls._normalize_klines(resp.json())
             for c in candles:
                 c["symbol"] = symbol.upper()
             return candles
@@ -73,7 +105,15 @@ class BinanceConnector:
             logger.warning("binance_klines_fallback", symbol=symbol, binance_symbol=binance_symbol, error=str(exc))
             raise
 
-    def _normalize_klines(self, raw: list) -> list[dict]:
+    def set_handlers(self, on_candle: Handler | None = None, on_quote: Handler | None = None) -> None:
+        self._on_candle = on_candle
+        self._on_quote = on_quote
+
+    async def get_klines(self, symbol: str, interval: str = "1m", limit: int = 500) -> list[dict]:
+        return await self.fetch_klines(symbol, interval, limit)
+
+    @staticmethod
+    def _normalize_klines(raw: list) -> list[dict]:
         return [
             {
                 "time": k[0],
@@ -90,9 +130,7 @@ class BinanceConnector:
         if intervals is None:
             intervals = ["1m"]
         self._running = True
-        # Store the original symbols the caller requested
         self._original_symbols = {s.upper() for s in symbols}
-        # Map to Binance pairs for streaming (e.g. XAUUSD → XAUUSDT)
         self._mapped_symbols = [to_binance_symbol(s) for s in symbols]
         task = asyncio.create_task(self._run_ws(self._mapped_symbols, intervals))
         self._tasks.append(task)
@@ -123,8 +161,6 @@ class BinanceConnector:
                 await asyncio.sleep(3)
 
     def _resolve_symbol(self, binance_symbol: str) -> str:
-        """Resolve a Binance pair back to our canonical symbol.
-        Only reverse-map if the caller originally requested the mapped name."""
         mapped = from_binance_symbol(binance_symbol)
         if mapped in getattr(self, "_original_symbols", set()):
             return mapped
@@ -169,5 +205,4 @@ class BinanceConnector:
         self._running = False
         for t in self._tasks:
             t.cancel()
-        await self._http.aclose()
         logger.info("binance_connector_closed")

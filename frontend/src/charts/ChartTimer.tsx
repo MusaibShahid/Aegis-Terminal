@@ -29,16 +29,12 @@ export function ChartTimer({ symbol, interval }: Props) {
           />
         </div>
         <span className={`font-mono text-[10px] tabular-nums min-w-[28px] text-right ${
-          isLow ? "text-accent-red" : "text-gray-500"
+          isLow ? "text-accent-red" : "text-text-tertiary"
         }`}>
           {remaining}s
         </span>
       </div>
-      {countdown.price != null && (
-        <span className="font-mono text-[10px] text-gray-600 tabular-nums">
-          ${countdown.price.toFixed(2)}
-        </span>
-      )}
+
     </div>
   );
 }

@@ -13,6 +13,7 @@ class AlertEngine:
         self._alerts: list[dict[str, Any]] = []
         self._on_alert = None
         self._prev: dict[int, float] = {}
+        self._triggered: set[int] = set()  # Track non-crossing alerts that have already fired
 
     def load(self, alerts: list[dict[str, Any]]) -> None:
         self._alerts = alerts
@@ -27,14 +28,29 @@ class AlertEngine:
     def remove_alert(self, alert_id: int) -> None:
         self._alerts = [a for a in self._alerts if a.get("id") != alert_id]
         self._prev.pop(alert_id, None)
+        self._triggered.discard(alert_id)
 
     async def check(self, data: dict[str, Any]) -> None:
         for alert in self._alerts:
             if not alert.get("enabled", True):
                 continue
+            alert_id = alert.get("id", 0)
             triggered = self._evaluate(alert, data)
             if triggered and self._on_alert:
-                await self._on_alert({**alert, "triggered_at": data.get("timestamp", 0)})
+                # For non-crossing alerts, only fire once (not every tick)
+                cond = alert.get("condition", {})
+                if isinstance(cond, str):
+                    import json as _json
+                    try:
+                        cond = _json.loads(cond)
+                    except Exception:
+                        cond = {}
+                op = cond.get("operator", ">")
+                if op in ("crosses_above", "crosses_below"):
+                    await self._on_alert({**alert, "triggered_at": data.get("timestamp", 0)})
+                elif alert_id not in self._triggered:
+                    self._triggered.add(alert_id)
+                    await self._on_alert({**alert, "triggered_at": data.get("timestamp", 0)})
 
     def _evaluate(self, alert: dict[str, Any], data: dict[str, Any]) -> bool:
         try:

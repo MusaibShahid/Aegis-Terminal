@@ -6,6 +6,7 @@ import { useConnectionStore } from "../stores/useConnectionStore";
 import { useCountdownStore } from "../stores/useCountdownStore";
 import { useFootprintStore } from "../stores/useFootprintStore";
 import { useLayoutStore } from "../stores/useLayoutStore";
+import { useLiveTradingStore } from "../stores/useLiveTradingStore";
 import { useMarketStore } from "../stores/useMarketStore";
 import { usePaperTradingStore } from "../stores/usePaperTradingStore";
 import type { BotSignal, Candle, CountdownMessage, Quote, WsMessage } from "../types";
@@ -28,7 +29,10 @@ export function useWebSocket(channel: string = "market") {
   const replaceSnapshot = usePaperTradingStore((s) => s.replaceSnapshot);
 
   // Subscribe to pane symbols/intervals and clear stale candles
-  const panes = useLayoutStore((s) => s.panes);
+  const panes = useLayoutStore((s) => {
+    const ws = s.workspaces.find((w) => w.id === s.activeWorkspaceId);
+    return ws?.panes ?? [];
+  });
   const clearCandles = useMarketStore((s) => s.clearCandles);
 
   useEffect(() => {
@@ -69,6 +73,35 @@ export function useWebSocket(channel: string = "market") {
 
     client.onMessage("candle_time", (msg: WsMessage) => {
       updateCountdown(msg as unknown as CountdownMessage);
+    });
+
+    // Live trading event handlers
+    client.onMessage("live_enabled", (msg) => {
+      useLiveTradingStore.getState().applyWSEvent(msg);
+    });
+
+    client.onMessage("live_disabled", (msg) => {
+      useLiveTradingStore.getState().applyWSEvent(msg);
+    });
+
+    client.onMessage("live_status", (msg: any) => {
+      useLiveTradingStore.getState().applyWSEvent(msg);
+    });
+
+    client.onMessage("live_account_info", (msg: any) => {
+      useLiveTradingStore.getState().applyWSEvent(msg);
+    });
+
+    client.onMessage("live_positions", (msg: any) => {
+      useLiveTradingStore.getState().applyWSEvent(msg);
+    });
+
+    client.onMessage("live_order_result", (msg: any) => {
+      useLiveTradingStore.getState().applyWSEvent(msg);
+    });
+
+    client.onMessage("live_close_result", (msg: any) => {
+      useLiveTradingStore.getState().applyWSEvent(msg);
     });
 
     // Paper trading event handlers
@@ -117,6 +150,7 @@ export function useWebSocket(channel: string = "market") {
     client.connect();
 
     return () => {
+      client.removeAllHandlers();
       client.disconnect();
       setStatus("disconnected");
     };

@@ -11,6 +11,17 @@ export function useDepthStream(symbols: string[]) {
     clientRef.current = client;
     client.connect();
 
+    // Subscribe to depth data for the requested symbols
+    const subscribeHandler = () => {
+      if (symbols.length > 0) {
+        client.send({ type: "subscribe", channel: "depth", symbols });
+      }
+    };
+    // Use onOpen callback to subscribe when connected
+    client.onOpen = subscribeHandler;
+    // Also try after a delay in case connection is already open
+    const timer = setTimeout(subscribeHandler, 500);
+
     client.onMessage("depth", (msg: any) => {
       if (msg.symbol) {
         setDepth(msg.symbol, {
@@ -23,7 +34,8 @@ export function useDepthStream(symbols: string[]) {
     });
 
     return () => {
+      clearTimeout(timer);
       client.disconnect();
     };
-  }, [setDepth, symbols]);
+  }, [setDepth]);
 }

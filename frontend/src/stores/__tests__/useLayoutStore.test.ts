@@ -4,25 +4,26 @@ import { useLayoutStore } from "../useLayoutStore";
 import type { LayoutConfig, PaneConfig } from "../../types";
 
 beforeEach(() => {
-  useLayoutStore.setState({ panes: [], activePaneId: null, linkedMode: false });
-  // Reset the store to initial state (which creates a default pane)
+  // Reset the store to initial state (which creates default panes in a workspace)
   useLayoutStore.getState().reset();
 });
 
 describe("useLayoutStore", () => {
   it("starts with one default pane for BTCUSDT", () => {
     const state = useLayoutStore.getState();
-    expect(state.panes).toHaveLength(1);
-    expect(state.panes[0].symbol).toBe("BTCUSDT");
-    expect(state.panes[0].interval).toBe("1m");
-    expect(state.panes[0].chartType).toBe("candle");
+    const panes = state.workspaces[0].panes;
+    expect(panes).toHaveLength(1);
+    expect(panes[0].symbol).toBe("BTCUSDT");
+    expect(panes[0].interval).toBe("1m");
+    expect(panes[0].chartType).toBe("candle");
     expect(state.activePaneId).toBeTruthy();
     expect(state.linkedMode).toBe(false);
   });
 
   it("addPane appends a new pane", () => {
     useLayoutStore.getState().addPane();
-    expect(useLayoutStore.getState().panes).toHaveLength(2);
+    const panes = useLayoutStore.getState().workspaces[0].panes;
+    expect(panes).toHaveLength(2);
   });
 
   it("addPane with custom config", () => {
@@ -32,11 +33,12 @@ describe("useLayoutStore", () => {
       interval: "5m",
       indicators: [],
       oscillators: [],
+      pineScripts: [],
       chartType: "footprint",
       linked: false,
     };
     useLayoutStore.getState().addPane(customPane);
-    const panes = useLayoutStore.getState().panes;
+    const panes = useLayoutStore.getState().workspaces[0].panes;
     expect(panes).toHaveLength(2);
     const added = panes.find((p) => p.id === "pane-custom");
     expect(added).toBeDefined();
@@ -46,23 +48,23 @@ describe("useLayoutStore", () => {
 
   it("removePane removes pane and adjusts activePaneId", () => {
     const store = useLayoutStore.getState();
-    const initialId = store.panes[0].id;
+    const initialId = store.workspaces[0].panes[0].id;
 
     store.addPane();
-    const secondId = useLayoutStore.getState().panes[1].id;
+    const secondId = useLayoutStore.getState().workspaces[0].panes[1].id;
     useLayoutStore.getState().setActivePane(secondId);
     expect(useLayoutStore.getState().activePaneId).toBe(secondId);
 
     useLayoutStore.getState().removePane(secondId);
-    expect(useLayoutStore.getState().panes).toHaveLength(1);
+    expect(useLayoutStore.getState().workspaces[0].panes).toHaveLength(1);
     expect(useLayoutStore.getState().activePaneId).toBe(initialId);
   });
 
   it("updatePane updates a pane by id", () => {
     const store = useLayoutStore.getState();
-    const paneId = store.panes[0].id;
+    const paneId = store.workspaces[0].panes[0].id;
     store.updatePane(paneId, { symbol: "ETHUSDT", interval: "15m" });
-    const updated = useLayoutStore.getState().panes[0];
+    const updated = useLayoutStore.getState().workspaces[0].panes[0];
     expect(updated.symbol).toBe("ETHUSDT");
     expect(updated.interval).toBe("15m");
   });
@@ -88,11 +90,11 @@ describe("useLayoutStore", () => {
     store.addPane();
     store.toggleLinkedMode();
 
-    const firstId = store.panes[0].id;
-    const secondId = useLayoutStore.getState().panes[1].id;
+    const firstId = store.workspaces[0].panes[0].id;
+    const secondId = useLayoutStore.getState().workspaces[0].panes[1].id;
 
     useLayoutStore.getState().updatePane(firstId, { symbol: "ETHUSDT", interval: "5m" });
-    const panes = useLayoutStore.getState().panes;
+    const panes = useLayoutStore.getState().workspaces[0].panes;
     // Both panes should have the same symbol and interval
     expect(panes[0].symbol).toBe("ETHUSDT");
     expect(panes[1].symbol).toBe("ETHUSDT");
@@ -104,24 +106,26 @@ describe("useLayoutStore", () => {
     const layout: LayoutConfig = {
       name: "test",
       panes: [
-        { id: "p1", symbol: "SOLUSDT", interval: "1h", indicators: [], oscillators: [], chartType: "candle", linked: false },
+        { id: "p1", symbol: "SOLUSDT", interval: "1h", indicators: [], oscillators: [], pineScripts: [], chartType: "candle", linked: false },
       ],
     };
     useLayoutStore.getState().loadLayout(layout);
-    expect(useLayoutStore.getState().panes).toHaveLength(1);
-    expect(useLayoutStore.getState().panes[0].symbol).toBe("SOLUSDT");
+    const panes = useLayoutStore.getState().workspaces[0].panes;
+    expect(panes).toHaveLength(1);
+    expect(panes[0].symbol).toBe("SOLUSDT");
     expect(useLayoutStore.getState().activePaneId).toBe("p1");
   });
 
   it("loadLayout with empty panes creates a default pane", () => {
     useLayoutStore.getState().loadLayout({ name: "empty", panes: [] });
-    expect(useLayoutStore.getState().panes).toHaveLength(1);
-    expect(useLayoutStore.getState().panes[0].symbol).toBe("BTCUSDT");
+    const panes = useLayoutStore.getState().workspaces[0].panes;
+    expect(panes).toHaveLength(1);
+    expect(panes[0].symbol).toBe("BTCUSDT");
   });
 
   it("getLayout returns current layout", () => {
     const layout = useLayoutStore.getState().getLayout();
-    expect(layout.name).toBe("default");
+    expect(layout.name).toBe("Default");
     expect(layout.panes).toHaveLength(1);
   });
 
@@ -130,7 +134,7 @@ describe("useLayoutStore", () => {
     useLayoutStore.getState().setActivePane("pane-xyz");
     useLayoutStore.getState().reset();
     const state = useLayoutStore.getState();
-    expect(state.panes).toHaveLength(1);
+    expect(state.workspaces[0].panes).toHaveLength(1);
     expect(state.activePaneId).toBe("pane-1");
   });
 });

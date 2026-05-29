@@ -25,9 +25,18 @@ TIMEFRAME_MAP = {
 class MT5Bridge:
     """Spawns a Python subprocess running mt5_worker.py and reads
     JSON-line messages (quotes, candles, errors) from its stdout using reader threads.
-    Sends commands (e.g. fetch_history) via stdin."""
+    Sends commands (e.g. fetch_history) via stdin.
 
-    def __init__(self) -> None:
+    Parameters
+    ----------
+    symbol_map : dict[str, str], optional
+        Maps frontend symbols → MT5 symbols (e.g. ``{"XAUUSDT": "XAUUSD"}``).
+        When fetching history for a frontend symbol, the bridge will
+        reverse-map it before sending to the MT5 worker.
+    """
+
+    def __init__(self, symbol_map: dict[str, str] | None = None) -> None:
+        self._symbol_map = symbol_map or {}
         self._proc: subprocess.Popen | None = None
         self._running = False
         self._on_quote: Handler | None = None
@@ -143,6 +152,51 @@ class MT5Bridge:
                     future.set_result(msg.get("candles", []))
             return
 
+        # --- Trade-related responses ---
+        if msg_type == "order_result":
+            req_id = msg.get("id")
+            async with self._req_lock:
+                future = self._pending_requests.pop(req_id, None)
+            if future and not future.done():
+                if "error" in msg:
+                    future.set_exception(RuntimeError(msg["error"]))
+                else:
+                    future.set_result(msg)
+            return
+
+        if msg_type == "positions_result":
+            req_id = msg.get("id")
+            async with self._req_lock:
+                future = self._pending_requests.pop(req_id, None)
+            if future and not future.done():
+                if "error" in msg:
+                    future.set_exception(RuntimeError(msg["error"]))
+                else:
+                    future.set_result(msg.get("positions", []))
+            return
+
+        if msg_type == "orders_result":
+            req_id = msg.get("id")
+            async with self._req_lock:
+                future = self._pending_requests.pop(req_id, None)
+            if future and not future.done():
+                if "error" in msg:
+                    future.set_exception(RuntimeError(msg["error"]))
+                else:
+                    future.set_result(msg.get("orders", []))
+            return
+
+        if msg_type == "margin_result":
+            req_id = msg.get("id")
+            async with self._req_lock:
+                future = self._pending_requests.pop(req_id, None)
+            if future and not future.done():
+                if "error" in msg:
+                    future.set_exception(RuntimeError(msg["error"]))
+                else:
+                    future.set_result(msg)
+            return
+
     async def _send_command(self, cmd: dict) -> None:
         """Write a JSON command to the worker's stdin."""
         if not self._proc or not self._proc.stdin:
@@ -156,11 +210,254 @@ class MT5Bridge:
                     self._proc.stdin.flush()
         await asyncio.to_thread(_write)
 
+    # ------------------------------------------------------------------
+    # Trade execution methods
+    # ------------------------------------------------------------------
+
+    async def send_order(self, request: dict) -> dict:
+        """Send a trade order to MT5.
+
+        Parameters mirror MT5's order_send():
+        - action: mt5.TRADE_ACTION_DEAL (0) or TRADE_ACTION_PENDING (1)
+        - symbol: str
+        - volume: float
+        - price: float
+        - sl, tp: float
+        - type: mt5.ORDER_TYPE_BUY (0), ORDER_TYPE_SELL (1), etc.
+        - type_filling: mt5.ORDER_FILLING_IOC (1) or FOK (2)
+        - magic: int
+        - comment: str
+
+        Returns a dict with retcode, deal, order, volume, price.
+        """
+        if not self._running or not self._proc:
+            return {"error": "MT5 bridge not running"}
+
+        # Reverse-map symbol if needed
+        symbol = request.get("symbol", "").upper()
+        mt5_symbol = self._symbol_map.get(symbol, symbol)
+        req = dict(request)
+        req["symbol"] = mt5_symbol
+        req["command"] = "order_send"
+
+        async with self._req_lock:
+            self._req_counter += 1
+            req_id = self._req_counter
+            req["id"] = req_id
+            loop = self._loop or asyncio.get_running_loop()
+            future = loop.create_future()
+            self._pending_requests[req_id] = future
+
+        try:
+            await self._send_command(req)
+            result = await asyncio.wait_for(future, timeout=10.0)
+            return result
+        except asyncio.TimeoutError:
+            async with self._req_lock:
+                self._pending_requests.pop(req_id, None)
+            return {"error": "order_timeout", "retcode": -1}
+        except Exception as exc:
+            async with self._req_lock:
+                self._pending_requests.pop(req_id, None)
+            return {"error": str(exc), "retcode": -1}
+
+    async def close_position(self, position_ticket: int, symbol: str, volume: float, price: float, deviation: int = 10) -> dict:
+        """Close an open MT5 position by sending an opposite market order."""
+        # Determine the opposite order type
+        position_info = await self.get_positions(symbol=symbol)
+        pos_type = None
+        for p in position_info:
+            if p.get("ticket") == position_ticket:
+                pos_type = p.get("type")
+                break
+        if pos_type is None:
+            return {"error": "position_not_found", "retcode": -1}
+
+        # Opposite type: 0=BUY → 1=SELL, 1=SELL → 0=BUY
+        close_type = 1 if pos_type == 0 else 0
+
+        return await self.send_order({
+            "action": 0,  # TRADE_ACTION_DEAL
+            "symbol": symbol,
+            "volume": volume,
+            "price": price,
+            "type": close_type,
+            "type_filling": 1,  # ORDER_FILLING_IOC
+            "deviation": deviation,
+            "magic": 12345,
+            "comment": "aegis_close",
+        })
+
+    async def modify_order(self, order_ticket: int, symbol: str, price: float | None = None,
+                           sl: float | None = None, tp: float | None = None) -> dict:
+        """Modify an existing order or position's SL/TP."""
+        # Reverse-map frontend symbol → MT5 symbol
+        mt5_symbol = self._symbol_map.get(symbol.upper(), symbol.upper())
+        req = {
+            "command": "order_send",
+            "action": 2,  # TRADE_ACTION_SLTP
+            "symbol": mt5_symbol,
+            "order": order_ticket,
+        }
+        if price is not None:
+            req["price"] = price
+        if sl is not None:
+            req["sl"] = sl
+        if tp is not None:
+            req["tp"] = tp
+
+        async with self._req_lock:
+            self._req_counter += 1
+            req_id = self._req_counter
+            req["id"] = req_id
+            loop = self._loop or asyncio.get_running_loop()
+            future = loop.create_future()
+            self._pending_requests[req_id] = future
+
+        try:
+            await self._send_command(req)
+            result = await asyncio.wait_for(future, timeout=10.0)
+            return result
+        except asyncio.TimeoutError:
+            async with self._req_lock:
+                self._pending_requests.pop(req_id, None)
+            return {"error": "modify_timeout", "retcode": -1}
+        except Exception as exc:
+            return {"error": str(exc), "retcode": -1}
+
+    async def get_positions(self, symbol: str | None = None) -> list[dict]:
+        """Get all open positions (optionally filtered by symbol)."""
+        if not self._running or not self._proc:
+            return []
+
+        # Reverse-map symbol if needed
+        mt5_symbol = None
+        if symbol:
+            mt5_symbol = self._symbol_map.get(symbol.upper(), symbol.upper())
+
+        req = {"command": "positions_get"}
+        if mt5_symbol:
+            req["symbol"] = mt5_symbol
+
+        async with self._req_lock:
+            self._req_counter += 1
+            req_id = self._req_counter
+            req["id"] = req_id
+            loop = self._loop or asyncio.get_running_loop()
+            future = loop.create_future()
+            self._pending_requests[req_id] = future
+
+        try:
+            await self._send_command(req)
+            return await asyncio.wait_for(future, timeout=10.0)
+        except asyncio.TimeoutError:
+            async with self._req_lock:
+                self._pending_requests.pop(req_id, None)
+            return []
+        except Exception:
+            return []
+
+    async def get_open_orders(self, symbol: str | None = None) -> list[dict]:
+        """Get all pending orders (optionally filtered by symbol)."""
+        if not self._running or not self._proc:
+            return []
+
+        mt5_symbol = None
+        if symbol:
+            mt5_symbol = self._symbol_map.get(symbol.upper(), symbol.upper())
+
+        req = {"command": "orders_get"}
+        if mt5_symbol:
+            req["symbol"] = mt5_symbol
+
+        async with self._req_lock:
+            self._req_counter += 1
+            req_id = self._req_counter
+            req["id"] = req_id
+            loop = self._loop or asyncio.get_running_loop()
+            future = loop.create_future()
+            self._pending_requests[req_id] = future
+
+        try:
+            await self._send_command(req)
+            return await asyncio.wait_for(future, timeout=10.0)
+        except asyncio.TimeoutError:
+            async with self._req_lock:
+                self._pending_requests.pop(req_id, None)
+            return []
+        except Exception:
+            return []
+
+    async def get_account_info(self) -> dict:
+        """Get MT5 account info (balance, equity, margin, etc.)."""
+        if not self._running or not self._proc:
+            return {"error": "MT5 bridge not running"}
+
+        req = {"command": "account_info"}
+
+        async with self._req_lock:
+            self._req_counter += 1
+            req_id = self._req_counter
+            req["id"] = req_id
+            loop = self._loop or asyncio.get_running_loop()
+            future = loop.create_future()
+            self._pending_requests[req_id] = future
+
+        try:
+            await self._send_command(req)
+            return await asyncio.wait_for(future, timeout=10.0)
+        except asyncio.TimeoutError:
+            async with self._req_lock:
+                self._pending_requests.pop(req_id, None)
+            return {"error": "timeout"}
+        except Exception as exc:
+            return {"error": str(exc)}
+
+    async def calc_margin(self, action: int, symbol: str, volume: float, price: float) -> dict:
+        """Calculate margin required for a trade."""
+        if not self._running or not self._proc:
+            return {"margin": 0.0, "error": "MT5 bridge not running"}
+
+        mt5_symbol = self._symbol_map.get(symbol.upper(), symbol.upper())
+        req = {
+            "command": "calc_margin",
+            "action": action,
+            "symbol": mt5_symbol,
+            "volume": volume,
+            "price": price,
+        }
+
+        async with self._req_lock:
+            self._req_counter += 1
+            req_id = self._req_counter
+            req["id"] = req_id
+            loop = self._loop or asyncio.get_running_loop()
+            future = loop.create_future()
+            self._pending_requests[req_id] = future
+
+        try:
+            await self._send_command(req)
+            return await asyncio.wait_for(future, timeout=10.0)
+        except asyncio.TimeoutError:
+            async with self._req_lock:
+                self._pending_requests.pop(req_id, None)
+            return {"margin": 0.0, "error": "timeout"}
+        except Exception as exc:
+            return {"margin": 0.0, "error": str(exc)}
+
     async def get_history(self, symbol: str, interval: str = "1m", count: int = 500) -> list[dict]:
-        """Fetch historical candles from MT5 via stdin command to the running worker."""
+        """Fetch historical candles from MT5 via stdin command to the running worker.
+
+        The *symbol* is expected in **frontend format** (e.g. ``XAUUSDT``).
+        It will be reverse-mapped via ``symbol_map`` to the MT5-native
+        symbol (e.g. ``XAUUSD``) before being sent to the worker.
+        """
         if not self._running or not self._proc:
             logger.warning("mt5_get_history_not_running", symbol=symbol)
             return []
+
+        # Reverse-map frontend symbol → MT5 symbol (e.g. XAUUSDT → XAUUSD)
+        mt5_symbol = self._symbol_map.get(symbol.upper(), symbol.upper())
 
         tf = TIMEFRAME_MAP.get(interval, 1)
 
@@ -175,7 +472,7 @@ class MT5Bridge:
             await self._send_command({
                 "command": "fetch_history",
                 "id": req_id,
-                "symbol": symbol,
+                "symbol": mt5_symbol,
                 "timeframe": tf,
                 "count": min(count, 1000),
             })

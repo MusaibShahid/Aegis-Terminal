@@ -152,7 +152,7 @@ class TestMarketOrders:
     @pytest.mark.asyncio
     async def test_market_sell_partial_close_long(self) -> None:
         """Partial sell reduces LONG position and credits balance."""
-        e = engine_with_price(50_000.0, slippage_bps=0.0)
+        e = engine_with_price(50_000.0, balance=100_000.0, slippage_bps=0.0)
         await e.create_order("BTCUSDT", "buy", "market", 0.2)
         bal_after_buy = e.balance
 
@@ -204,9 +204,10 @@ class TestMarketOrders:
     @pytest.mark.asyncio
     async def test_slippage_applied(self) -> None:
         """With slippage, fill price differs from mid price."""
+        # Use 1.0 BTC so cost (50_050 + ~50 fee ≈ 50_100) fits within 100_000 balance
         e = engine_with_price(50_000.0, balance=100_000.0, slippage_bps=10.0)  # 0.1 %
-        r = await e.create_order("BTCUSDT", "buy", "market", 2.0)
-        assert "error" not in r
+        r = await e.create_order("BTCUSDT", "buy", "market", 1.0)
+        assert "error" not in r, f"{r}"
         # With no book data, fallback uses: price * (1 + slippage_bps/10000)
         expected_price = 50_000.0 * (1 + 10.0 / 10000)
         assert abs(r["filled_price"] - expected_price) < 0.1

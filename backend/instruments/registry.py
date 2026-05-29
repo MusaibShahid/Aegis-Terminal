@@ -14,19 +14,16 @@ INSTRUMENTS: list[dict[str, Any]] = [
     {"symbol": "AVAXUSDT", "display_name": "Avalanche", "market_type": "crypto", "source": "binance", "tick_size": 0.01, "timezone": "UTC", "precision": 2},
     {"symbol": "DOTUSDT", "display_name": "Polkadot", "market_type": "crypto", "source": "binance", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
     {"symbol": "LINKUSDT", "display_name": "Chainlink", "market_type": "crypto", "source": "binance", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
-    # Metals (Binance pairs — live data available)
-    {"symbol": "XAUUSDT", "display_name": "Gold", "market_type": "metal", "source": "mt5", "tick_size": 0.01, "timezone": "UTC", "precision": 2},
-    {"symbol": "XAGUSDT", "display_name": "Silver", "market_type": "metal", "source": "mt5", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
-    # Metals (MT5 — requires MT5 bridge; mapped to Binance via symbol mapper)
-    {"symbol": "XAUUSD", "display_name": "Gold", "market_type": "metal", "source": "mt5", "tick_size": 0.01, "timezone": "UTC", "precision": 2},
-    {"symbol": "XAGUSD", "display_name": "Silver", "market_type": "metal", "source": "mt5", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
-    # Forex
-    {"symbol": "EURUSD", "display_name": "Euro / US Dollar", "market_type": "forex", "source": "mt5", "tick_size": 0.00001, "timezone": "UTC", "precision": 5},
-    {"symbol": "GBPUSD", "display_name": "British Pound / US Dollar", "market_type": "forex", "source": "mt5", "tick_size": 0.00001, "timezone": "UTC", "precision": 5},
-    {"symbol": "USDJPY", "display_name": "US Dollar / Japanese Yen", "market_type": "forex", "source": "mt5", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
-    {"symbol": "AUDUSD", "display_name": "Australian Dollar / US Dollar", "market_type": "forex", "source": "mt5", "tick_size": 0.00001, "timezone": "UTC", "precision": 5},
-    {"symbol": "USDCAD", "display_name": "US Dollar / Canadian Dollar", "market_type": "forex", "source": "mt5", "tick_size": 0.00001, "timezone": "UTC", "precision": 5},
-    {"symbol": "NZDUSD", "display_name": "New Zealand Dollar / US Dollar", "market_type": "forex", "source": "mt5", "tick_size": 0.00001, "timezone": "UTC", "precision": 5},
+    # Metals
+    {"symbol": "XAUUSD", "display_name": "Gold", "market_type": "metal", "source": "binance", "tick_size": 0.01, "timezone": "UTC", "precision": 2},
+    {"symbol": "XAGUSD", "display_name": "Silver", "market_type": "metal", "source": "binance", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
+    # Forex (mapped to Binance pairs via SYMBOL_MAP: EURUSD→EURUSDT, etc.)
+    {"symbol": "EURUSD", "display_name": "Euro / US Dollar", "market_type": "forex", "source": "binance", "tick_size": 0.00001, "timezone": "UTC", "precision": 5},
+    {"symbol": "GBPUSD", "display_name": "British Pound / US Dollar", "market_type": "forex", "source": "binance", "tick_size": 0.00001, "timezone": "UTC", "precision": 5},
+    {"symbol": "USDJPY", "display_name": "US Dollar / Japanese Yen", "market_type": "forex", "source": "binance", "tick_size": 0.001, "timezone": "UTC", "precision": 3},
+    {"symbol": "AUDUSD", "display_name": "Australian Dollar / US Dollar", "market_type": "forex", "source": "binance", "tick_size": 0.00001, "timezone": "UTC", "precision": 5},
+    {"symbol": "USDCAD", "display_name": "US Dollar / Canadian Dollar", "market_type": "forex", "source": "binance", "tick_size": 0.00001, "timezone": "UTC", "precision": 5},
+    {"symbol": "NZDUSD", "display_name": "New Zealand Dollar / US Dollar", "market_type": "forex", "source": "binance", "tick_size": 0.00001, "timezone": "UTC", "precision": 5},
 ]
 
 

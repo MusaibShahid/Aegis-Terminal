@@ -1,11 +1,16 @@
 import { useEffect, useRef } from "react";
 import { useFootprintStore } from "../stores/useFootprintStore";
+import { cachedFetch } from "../utils/requestCache";
+import type { FootprintData, VPVRData, DeltaData } from "../types";
 
 /**
  * Fetches footprint/delta/VPVR once on mount for instant display.
  * After the initial load, updates come from the WebSocket stream
  * (handled in useWebSocket.ts which calls setFootprint/setVPVR/setDelta
  * on "footprint" / "vpvr" / "delta" message types).
+ *
+ * Uses cachedFetch with 10s TTL (enough to deduplicate rapid symbol switches)
+ * but no localStorage persistence — analytics are ephemeral tick snapshots.
  */
 export function useFootprint(symbol: string) {
   const setFootprint = useFootprintStore((s) => s.setFootprint);
@@ -19,9 +24,9 @@ export function useFootprint(symbol: string) {
     const fetchData = async () => {
       try {
         const [fp, vp, dl] = await Promise.all([
-          fetch(`/api/footprint?symbol=${symbol}`).then((r) => r.json()),
-          fetch(`/api/vpvr?symbol=${symbol}`).then((r) => r.json()),
-          fetch(`/api/delta?symbol=${symbol}`).then((r) => r.json()),
+          cachedFetch<FootprintData>(`/api/footprint?symbol=${symbol}`, { ttl: 10_000 }),
+          cachedFetch<VPVRData>(`/api/vpvr?symbol=${symbol}`, { ttl: 10_000 }),
+          cachedFetch<DeltaData>(`/api/delta?symbol=${symbol}`, { ttl: 10_000 }),
         ]);
         if (!cancelled) {
           setFootprint(symbol, fp);

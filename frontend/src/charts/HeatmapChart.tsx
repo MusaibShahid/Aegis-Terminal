@@ -9,14 +9,14 @@ export function HeatmapChart({ symbol }: Props) {
 
   if (!footprint || !footprint.levels || footprint.levels.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-600 text-xs">
+      <div className="flex items-center justify-center h-full text-text-muted text-xs">
         Loading heatmap data...
       </div>
     );
   }
 
   const maxDelta = Math.max(
-    ...footprint.levels.map((l: any) => Math.abs((l.buyVolume || 0) - (l.sellVolume || 0))),
+    ...footprint.levels.map((l: any) => Math.abs((l.bid_volume || 0) - (l.ask_volume || 0))),
     1
   );
 
@@ -24,13 +24,13 @@ export function HeatmapChart({ symbol }: Props) {
     <div className="h-full overflow-y-auto p-2">
       <div className="text-[10px] font-mono space-y-px">
         {/* Header */}
-        <div className="flex items-center gap-2 text-[9px] text-gray-600 uppercase tracking-wider px-1 pb-1 border-b border-surface-border/30 mb-1">
+        <div className="flex items-center gap-2 text-[9px] text-text-muted uppercase tracking-wider px-1 pb-1 border-b border-surface-border/30 mb-1">
           <span className="w-16">Price</span>
           <span className="flex-1">Heat (Δ)</span>
         </div>
 
         {footprint.levels.slice(-60).map((level: any, i: number) => {
-          const delta = (level.buyVolume || 0) - (level.sellVolume || 0);
+          const delta = (level.bid_volume || 0) - (level.ask_volume || 0);
           const intensity = Math.abs(delta) / maxDelta;
           const isPositive = delta >= 0;
 
@@ -42,9 +42,9 @@ export function HeatmapChart({ symbol }: Props) {
 
           return (
             <div key={i} className="flex items-center gap-2 px-1 py-0.5 hover:bg-glass-white-hover rounded transition-colors">
-              <span className="w-16 text-gray-400 tabular-nums">{level.price?.toFixed(2) ?? "N/A"}</span>
+              <span className="w-16 text-text-secondary tabular-nums">{level.price?.toFixed(2) ?? "N/A"}</span>
               <div className="flex-1 h-4 rounded" style={{ backgroundColor: `rgba(${r}, ${g}, ${b}, ${alpha})` }}>
-                <span className="px-1 text-[9px] text-white/70 tabular-nums">
+                <span className="px-1 text-[9px] text-text-secondary tabular-nums">
                   {delta >= 0 ? "+" : ""}{delta.toFixed(2)}
                 </span>
               </div>

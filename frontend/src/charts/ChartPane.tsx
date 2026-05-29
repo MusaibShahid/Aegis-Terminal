@@ -1,5 +1,5 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
-import { createChart, type IChartApi, type ISeriesApi, type CandlestickSeriesPartialOptions, type UTCTimestamp, type LineSeriesPartialOptions } from "lightweight-charts";
+import { createChart, type IChartApi, type ISeriesApi, type CandlestickSeriesPartialOptions, type UTCTimestamp, type LineSeriesPartialOptions, type SeriesMarker } from "lightweight-charts";
 import type { Candle } from "../types";
 import { useAutoFit } from "../hooks/useAutoFit";
 
@@ -9,6 +9,13 @@ export interface ChartPaneHandle {
   container: HTMLDivElement | null;
 }
 
+export interface TradeMarker {
+  time: number;
+  action: "buy" | "sell";
+  price: number;
+  label?: string;
+}
+
 interface Props {
   candles: Candle[];
   symbol: string;
@@ -16,12 +23,14 @@ interface Props {
   height: number;
   containerWidth?: number;
   resizeKey?: number;
-  onCrosshairMove?: (price: number, time: number) => void;
+  onCrosshairMove?: (price: number, time: number, x?: number, y?: number) => void;
   indicatorLines?: { id: string; data: { time: number; value: number }[]; color: string }[];
+  tradeMarkers?: TradeMarker[];
+  onChartReady?: (chart: IChartApi, series: ISeriesApi<"Candlestick">) => void;
 }
 
 export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
-  { candles, height, containerWidth, resizeKey, onCrosshairMove, indicatorLines },
+  { candles, height, containerWidth, resizeKey, onCrosshairMove, indicatorLines, tradeMarkers, onChartReady },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,6 +42,10 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
   candlesRef.current = candles;
   const indicatorLinesRef = useRef(indicatorLines);
   indicatorLinesRef.current = indicatorLines;
+  const onChartReadyRef = useRef(onChartReady);
+  onChartReadyRef.current = onChartReady;
+  // Track current chart dimensions so we can apply via options without recreation
+  const dimsRef = useRef({ width: 600, height: 300 });
 
   useImperativeHandle(
     ref,
@@ -44,6 +57,7 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
     []
   );
 
+  // ---- Chart creation (mount only, no-height dependency) ----
   useEffect(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
@@ -57,26 +71,29 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
         return;
       }
 
+      const w = container.clientWidth || 600;
+      dimsRef.current = { width: w, height };
+
       const chart = createChart(container, {
-        width: container.clientWidth || 600,
+        width: w,
         height,
         layout: {
-          background: { color: "#0a0c14" },
-          textColor: "#6b7280",
+          background: { color: "#0b0d17" },
+          textColor: "#5c6077",
           fontSize: 10,
           fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', monospace",
         },
         grid: {
-          vertLines: { color: "rgba(255,255,255,0.03)" },
-          horzLines: { color: "rgba(255,255,255,0.03)" },
+          vertLines: { color: "rgba(255,255,255,0.025)" },
+          horzLines: { color: "rgba(255,255,255,0.025)" },
         },
         crosshair: {
           mode: 0,
-          vertLine: { color: "rgba(255,255,255,0.15)", width: 1, style: 2, labelBackgroundColor: "#1e293b" },
-          horzLine: { color: "rgba(255,255,255,0.15)", width: 1, style: 2, labelBackgroundColor: "#1e293b" },
+          vertLine: { color: "rgba(59,130,246,0.3)", width: 1, style: 2, labelBackgroundColor: "#161928" },
+          horzLine: { color: "rgba(59,130,246,0.3)", width: 1, style: 2, labelBackgroundColor: "#161928" },
         },
         timeScale: {
-          borderColor: "rgba(255,255,255,0.06)",
+          borderColor: "rgba(255,255,255,0.05)",
           timeVisible: true,
           secondsVisible: false,
           tickMarkFormatter: (time: number) => {
@@ -110,6 +127,11 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
 
       chartRef.current = chart;
       seriesRef.current = series;
+
+      // Notify parent that chart is ready (for overlays like FootprintOverlay)
+      if (onChartReadyRef.current) {
+        onChartReadyRef.current(chart, series);
+      }
 
       const currentCandles = candlesRef.current;
       if (currentCandles.length > 0) {
@@ -147,14 +169,18 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
         chart.subscribeCrosshairMove((param) => {
           if (param.point && param.time) {
             const data = param.seriesData.get(series) as { close: number } | undefined;
-            onCrosshairMove(data?.close ?? 0, (param.time as number) * 1000);
+            onCrosshairMove(data?.close ?? 0, (param.time as number) * 1000, param.point.x, param.point.y);
+          } else {
+            // Crosshair left the chart area
+            onCrosshairMove(0, 0);
           }
         });
       }
 
       const observer = new ResizeObserver((entries) => {
         for (const entry of entries) {
-          chart.applyOptions({ width: entry.contentRect.width, height });
+          dimsRef.current = { width: entry.contentRect.width, height: dimsRef.current.height };
+          chart.applyOptions({ width: entry.contentRect.width, height: dimsRef.current.height });
         }
       });
       observer.observe(container);
@@ -172,10 +198,20 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
       initKey.current += 1;
       (container as any).__chartCleanup?.();
     };
-  }, [height, onCrosshairMove, resizeKey]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onCrosshairMove, resizeKey]);
+
+  // ---- Apply dimension changes via options (no chart recreation) ----
+  useEffect(() => {
+    dimsRef.current.height = height;
+    chartRef.current?.applyOptions({ height });
+  }, [height]);
 
   useEffect(() => {
-    chartRef.current?.applyOptions({ width: containerWidth || chartRef.current?.options()?.width || 600 });
+    if (containerWidth && containerWidth > 0) {
+      dimsRef.current.width = containerWidth;
+      chartRef.current?.applyOptions({ width: containerWidth });
+    }
   }, [containerWidth]);
 
   useEffect(() => {
@@ -226,6 +262,24 @@ export const ChartPane = forwardRef<ChartPaneHandle, Props>(function ChartPane(
       );
     });
   }, [indicatorLines]);
+
+  // ---- Trade markers (bot signals, paper trades) ----
+  useEffect(() => {
+    if (!seriesRef.current || !tradeMarkers || tradeMarkers.length === 0) {
+      seriesRef.current?.setMarkers([]);
+      return;
+    }
+    const markers: SeriesMarker<UTCTimestamp>[] = tradeMarkers
+      .sort((a, b) => a.time - b.time)
+      .map((m) => ({
+        time: (m.time / 1000) as UTCTimestamp,
+        position: m.action === "buy" ? "belowBar" : "aboveBar",
+        color: m.action === "buy" ? "#22c55e" : "#ef4444",
+        shape: m.action === "buy" ? "arrowUp" : "arrowDown",
+        text: m.label ?? (m.action === "buy" ? "BUY" : "SELL"),
+      }));
+    seriesRef.current.setMarkers(markers);
+  }, [tradeMarkers]);
 
   useAutoFit(chartRef, seriesRef, candles);
 

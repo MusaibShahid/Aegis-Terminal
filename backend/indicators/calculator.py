@@ -42,7 +42,11 @@ def wma(data: list[float], period: int) -> list[float | None]:
 
 def hma(data: list[float], period: int) -> list[float | None]:
     half = period // 2
+    if half < 1:
+        half = 1
     sqrt_per = int(math.sqrt(period))
+    if sqrt_per < 1:
+        sqrt_per = 1
 
     wma_half = wma(data, half)
     wma_full = wma(data, period)
@@ -54,14 +58,8 @@ def hma(data: list[float], period: int) -> list[float | None]:
         else:
             diff.append(0.0)
 
-    result: list[float | None] = []
-    for i in range(len(diff)):
-        if i < sqrt_per - 1:
-            result.append(None)
-        else:
-            vals = diff[i - sqrt_per + 1 : i + 1]
-            result.append(sum(vals) / sqrt_per)
-    return result
+    # Final step uses WMA of the difference series (not simple average)
+    return wma(diff, sqrt_per)
 
 
 def rsi(data: list[float], period: int = 14) -> list[float | None]:
@@ -78,6 +76,12 @@ def rsi(data: list[float], period: int = 14) -> list[float | None]:
             result.append(None)
             continue
         if i == period:
+            # Seed with SMA of first `period` changes
+            change = data[i] - data[i - 1]
+            if change > 0:
+                avg_gain += change
+            else:
+                avg_loss += abs(change)
             avg_gain /= period
             avg_loss /= period
         else:
@@ -125,8 +129,11 @@ def stochastic(
             raw_k.append(((close[i] - ll) / (hh - ll) * 100) if (hh - ll) != 0 else 50)
 
     k_vals = [v for v in raw_k if v is not None]
-    k_line = ema([0] * (smooth_k - 1) + k_vals, smooth_k) if k_vals else []
-    d_line = ema([v for v in k_line if v is not None], smooth_d) if k_line else []
+    # Use SMA for smoothing %K (standard approach), not EMA with zero-padding
+    k_line = sma(k_vals, smooth_k) if k_vals else []
+    # %D is SMA of %K
+    valid_k = [v for v in k_line if v is not None]
+    d_line = sma(valid_k, smooth_d) if valid_k else []
 
     ki, di = 0, 0
     result: list[dict[str, float | None]] = []

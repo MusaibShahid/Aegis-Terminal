@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { memo, useState } from "react";
+import { X } from "lucide-react";
 import type { PaneConfig, IndicatorOverlay, IndicatorOscillator } from "../types";
 import { useLayoutStore } from "../stores/useLayoutStore";
 import { IndicatorConfigModal } from "./IndicatorConfigModal";
@@ -16,6 +17,9 @@ const ALL_INDICATORS = [
   { type: "keltner", label: "Keltner Channels", cat: "overlay" },
   { type: "vwap", label: "VWAP", cat: "overlay" },
   { type: "parabolic_sar", label: "Parabolic SAR", cat: "overlay" },
+  { type: "supertrend", label: "Supertrend", cat: "overlay" },
+  { type: "ichimoku", label: "Ichimoku Cloud", cat: "overlay" },
+  { type: "crt", label: "Candle Range Theory", cat: "overlay" },
   { type: "rsi", label: "RSI", cat: "oscillator" },
   { type: "macd", label: "MACD", cat: "oscillator" },
   { type: "stochastic", label: "Stochastic", cat: "oscillator" },
@@ -24,6 +28,7 @@ const ALL_INDICATORS = [
   { type: "atr", label: "ATR", cat: "oscillator" },
   { type: "obv", label: "OBV", cat: "oscillator" },
   { type: "cmf", label: "CMF", cat: "oscillator" },
+  { type: "adx", label: "ADX", cat: "oscillator" },
 ];
 
 const DEFAULT_PARAMS: Record<string, Record<string, number>> = {
@@ -35,6 +40,9 @@ const DEFAULT_PARAMS: Record<string, Record<string, number>> = {
   keltner: { period: 20, atr_mult: 1.5 },
   vwap: { period: 20 },
   parabolic_sar: { step: 0.02, max_step: 0.2 },
+  supertrend: { period: 10, multiplier: 3 },
+  ichimoku: { tenkan: 9, kijun: 26, span_b: 52, displacement: 26 },
+  crt: { lookback: 50 },
   rsi: { period: 14 },
   macd: { fast: 12, slow: 26, signal: 9 },
   stochastic: { k_period: 14, d_period: 3 },
@@ -43,9 +51,10 @@ const DEFAULT_PARAMS: Record<string, Record<string, number>> = {
   atr: { period: 14 },
   obv: { sma_period: 0 },
   cmf: { period: 20 },
+  adx: { period: 14 },
 };
 
-export function IndicatorPanel({ pane }: Props) {
+export const IndicatorPanel = memo(function IndicatorPanel({ pane }: Props) {
   const updatePane = useLayoutStore((s) => s.updatePane);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -97,36 +106,30 @@ export function IndicatorPanel({ pane }: Props) {
 
   return (
     <>
-      <div className="flex items-center gap-1 px-2 py-1.5 bg-[#0d0f17] border-b border-white/5 shrink-0 overflow-x-auto scrollbar-thin">
+      <div className="flex items-center gap-1 px-2 py-1.5 bg-surface-alt border-b border-surface-border shrink-0 overflow-x-auto scrollbar-none">
         {pane.indicators.map((ind) => (
           <span
             key={ind.id}
-            className="inline-flex items-center gap-1.5 text-[10px] bg-accent-blue/[0.06] text-accent-blue/90 border border-accent-blue/10 px-2 py-0.5 rounded-lg cursor-pointer hover:bg-accent-blue/[0.1] hover:border-accent-blue/20 transition-all group"
+            className="inline-flex items-center gap-1.5 text-[10px] bg-accent-blue/8 text-accent-blue border border-accent-blue/15 px-2 py-0.5 rounded cursor-pointer hover:bg-accent-blue/12 hover:border-accent-blue/25 transition-all group"
             onClick={() => setEditingId(ind.id)}
             title="Click to configure"
           >
-            <svg className="w-2.5 h-2.5 opacity-50" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19.14 12.94a7.07 7.07 0 00.06-.94c0-.32-.02-.64-.06-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96a6.93 6.93 0 00-1.62-.94l-.36-2.54a.48.48 0 00-.48-.41h-3.84a.48.48 0 00-.48.41l-.36 2.54a6.9 6.9 0 00-1.62.94l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87a.48.48 0 00.12.61l2.03 1.58a7.07 7.07 0 000 1.88l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.04.7 1.62.94l.36 2.54c.05.24.26.41.48.41h3.84c.22 0 .43-.17.48-.41l.36-2.54a6.9 6.9 0 001.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.03-1.58zM12 15.6A3.6 3.6 0 1115.6 12 3.6 3.6 0 0112 15.6z"/>
-            </svg>
-            <span className="font-medium tracking-wider">{ind.type.toUpperCase()}</span>
+            <span className="font-medium tracking-wider font-mono">{ind.type.toUpperCase()}</span>
             {formatParams(ind) && (
-              <span className="text-gray-500 text-[8px] hidden group-hover:inline transition-opacity">
+              <span className="text-text-muted text-[8px] hidden group-hover:inline transition-opacity">
                 {formatParams(ind)}
               </span>
             )}
             <button
-              className="w-3.5 h-3.5 flex items-center justify-center rounded text-gray-500 hover:text-accent-red hover:bg-accent-red/10 transition-all text-[9px] ml-0.5"
-              onClick={(e) => {
-                e.stopPropagation();
-                removeIndicator(ind.id);
-              }}
+              className="w-3.5 h-3.5 flex items-center justify-center rounded text-text-muted hover:text-accent-red hover:bg-accent-red/10 transition-all text-[9px] ml-0.5"
+              onClick={(e) => { e.stopPropagation(); removeIndicator(ind.id); }}
             >
-              ✕
+              <X size={8} />
             </button>
           </span>
         ))}
         <button
-          className="text-[18px] leading-none text-gray-500 hover:text-white px-1 hover:bg-white/[0.05] rounded transition-all"
+          className="text-[18px] leading-none text-text-tertiary hover:text-text-primary px-1 hover:bg-surface-hover rounded transition-all"
           onClick={() => setShowAdd(true)}
           title="Add indicator"
         >
@@ -146,11 +149,11 @@ export function IndicatorPanel({ pane }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowAdd(false)}>
           <div className="bg-surface rounded-lg border border-surface-border p-4 w-72 text-xs shadow-xl max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-white font-semibold uppercase tracking-wider">Add Indicator</span>
-              <button className="text-gray-500 hover:text-white text-sm" onClick={() => setShowAdd(false)}>✕</button>
+              <span className="text-text-primary font-semibold uppercase tracking-wider">Add Indicator</span>
+              <button className="text-text-tertiary hover:text-text-primary text-sm" onClick={() => setShowAdd(false)}>✕</button>
             </div>
             <input
-              className="w-full bg-surface-alt border border-surface-border rounded px-2 py-1.5 text-white text-xs outline-none focus:border-accent-blue mb-2"
+              className="w-full bg-surface-alt border border-surface-border rounded px-2 py-1.5 text-text-primary text-xs outline-none focus:border-accent-blue mb-2"
               placeholder="Search indicators..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -160,16 +163,16 @@ export function IndicatorPanel({ pane }: Props) {
               {filtered.map((ind) => (
                 <button
                   key={ind.type}
-                  className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-white/[0.05] text-left transition-colors disabled:opacity-40"
+                  className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-surface-hover text-left transition-colors disabled:opacity-40"
                   onClick={() => addIndicator(ind.type)}
                   disabled={pane.indicators.some((i) => i.type === ind.type)}
                 >
-                  <span className="text-gray-300">{ind.label}</span>
-                  <span className="text-[9px] text-gray-600 uppercase">{ind.cat}</span>
+                  <span className="text-text-primary">{ind.label}</span>
+                  <span className="text-[9px] text-text-muted uppercase">{ind.cat}</span>
                 </button>
               ))}
               {filtered.length === 0 && (
-                <div className="text-gray-600 text-center py-4">No indicators found</div>
+                <div className="text-text-muted text-center py-4">No indicators found</div>
               )}
             </div>
           </div>
@@ -177,4 +180,4 @@ export function IndicatorPanel({ pane }: Props) {
       )}
     </>
   );
-}
+});

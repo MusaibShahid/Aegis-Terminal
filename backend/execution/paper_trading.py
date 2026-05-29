@@ -292,8 +292,7 @@ class PaperTradingEngine:
 
         # Market orders execute immediately
         if type_enum == OrderType.MARKET:
-            result = await self._execute_market(order)
-            return result if "error" in result else result
+            return await self._execute_market(order)
 
         # For limit/stop, store and check current price
         self._orders[order.id] = order
@@ -490,6 +489,7 @@ class PaperTradingEngine:
 
     async def _execute_market(self, order: PaperOrder, db=None) -> dict[str, Any]:
         """Execute a market order immediately."""
+        persist = db or self._db
         fill = self.orderbook.simulate_fill(
             order.symbol,
             order.side.value,
@@ -510,6 +510,18 @@ class PaperTradingEngine:
 
         cost = order.filled_price * order.filled_quantity
         fee = self._compute_fee(cost, is_taker=True)
+
+        # Guard: balance should never go negative for buy orders
+        if order.side == OrderSide.BUY and (cost + fee) > self._balance + 1e-8:
+            order.status = OrderStatus.REJECTED
+            logger.warning(
+                "market_order_insufficient_balance",
+                order_id=order.id, symbol=order.symbol,
+                cost=cost + fee, balance=self._balance,
+            )
+            await self._emit("order_rejected", self._order_to_dict(order))
+            return {"error": "insufficient_balance"}
+
         self._total_fees_paid += fee
         if order.side == OrderSide.BUY:
             self._balance -= (cost + fee)
@@ -523,8 +535,8 @@ class PaperTradingEngine:
         self._orders[order.id] = order
 
         # Persist order
-        if db:
-            await self._save_order_to_db(db, order)
+        if persist:
+            await self._save_order_to_db(persist, order)
 
         result = self._order_to_dict(order)
         result["fee"] = fee
@@ -593,6 +605,7 @@ class PaperTradingEngine:
 
     async def _fill_limit_order(self, order: PaperOrder, db=None) -> None:
         """Fill a limit order at its limit price (or better)."""
+        persist = db or self._db
         # Guard: skip if no longer open
         if order.status not in (OrderStatus.OPEN, OrderStatus.PARTIAL):
             return
@@ -650,8 +663,8 @@ class PaperTradingEngine:
         pos = await self._apply_fill_to_position(order, db=db, fill_qty=fill_delta)
         order.position_id = pos.id if pos else None
 
-        if db:
-            await self._save_order_to_db(db, order)
+        if persist:
+            await self._save_order_to_db(persist, order)
 
         result = self._order_to_dict(order)
         result["fee"] = fee

@@ -9,7 +9,7 @@ export function DeltaChart({ symbol }: Props) {
 
   if (!delta || !delta.delta_series || delta.delta_series.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-600 text-xs">
+      <div className="flex items-center justify-center h-full text-text-muted text-xs">
         Loading delta data...
       </div>
     );
@@ -26,13 +26,13 @@ export function DeltaChart({ symbol }: Props) {
       {/* Summary */}
       <div className="flex items-center gap-3 mb-2 text-[10px] font-mono">
         <div className="glass-card rounded px-2 py-1">
-          <span className="text-gray-600">Candle Δ: </span>
-          <span className={delta.candle_delta >= 0 ? "text-accent-green tabular-nums" : "text-accent-red tabular-nums"}>
-            {delta.candle_delta >= 0 ? "+" : ""}{delta.candle_delta?.toFixed(2) ?? "0"}
+          <span className="text-text-muted">Candle Δ: </span>
+          <span className={delta.candle_delta.delta >= 0 ? "text-accent-green tabular-nums" : "text-accent-red tabular-nums"}>
+            {delta.candle_delta.delta >= 0 ? "+" : ""}{delta.candle_delta.delta.toFixed(2)}
           </span>
         </div>
         <div className="glass-card rounded px-2 py-1">
-          <span className="text-gray-600">Cum Δ: </span>
+          <span className="text-text-muted">Cum Δ: </span>
           <span className={delta.cumulative_delta >= 0 ? "text-accent-green tabular-nums" : "text-accent-red tabular-nums"}>
             {delta.cumulative_delta >= 0 ? "+" : ""}{delta.cumulative_delta?.toFixed(2) ?? "0"}
           </span>

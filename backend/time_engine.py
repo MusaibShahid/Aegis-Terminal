@@ -94,9 +94,17 @@ class TimeEngine:
 
     def _get_session(self, now_ms: int) -> str:
         hour = (now_ms // 3600000) % 24
+        # Priority: new_york > london > asian (most active market first)
+        sessions = []
         for name, (start, end) in TRADING_SESSIONS.items():
             if start <= hour < end or (start > end and (hour >= start or hour < end)):
-                return name
+                sessions.append(name)
+        if "new_york" in sessions:
+            return "new_york"
+        if "london" in sessions:
+            return "london"
+        if "asian" in sessions:
+            return "asian"
         return "closed"
 
     def get_countdown(self, symbol: str, interval: str) -> dict | None:

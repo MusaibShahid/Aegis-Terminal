@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Plus, Minus, Link2, Link2Off, Settings, LayoutGrid } from "lucide-react";
 
 import { StatusBar } from "../components/StatusBar";
 import { ToolsDrawer } from "../components/ToolsDrawer";
+import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import { useLayoutStore } from "../stores/useLayoutStore";
 import { useToolStore } from "../stores/useToolStore";
 import { useResponsive } from "../hooks/useResponsive";
@@ -10,221 +12,245 @@ import { Sidebar } from "../sidebar/Sidebar";
 import { Pane } from "./Pane";
 
 export function Workspace() {
-  const panes = useLayoutStore((s) => s.panes);
+  const getActiveWorkspace = useLayoutStore((s) => s.getActiveWorkspace);
   const updatePane = useLayoutStore((s) => s.updatePane);
   const addPane = useLayoutStore((s) => s.addPane);
   const removePane = useLayoutStore((s) => s.removePane);
   const linkedMode = useLayoutStore((s) => s.linkedMode);
   const toggleLinkedMode = useLayoutStore((s) => s.toggleLinkedMode);
+
+  const workspace = getActiveWorkspace();
+  const panes = workspace?.panes ?? [];
   const toggleDrawer = useToolStore((s) => s.toggleDrawer);
   const responsive = useResponsive();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(800);
-  const resizeTick = useRef(0);
+  const [containerHeight, setContainerHeight] = useState(600);
 
-  const [paneHeights, setPaneHeights] = useState<number[]>(() =>
-    panes.map(() =>
-      Math.max(150, Math.floor((window.innerHeight - 28) / Math.max(panes.length, 1)))
-    )
+  // Drag-to-resize state
+  const [columnSplit, setColumnSplit] = useState(0.5);
+  const [rowSplit, setRowSplit] = useState(0.5);
+  const [dragging, setDragging] = useState<'col' | 'row' | null>(null);
+  const dragContainerRect = useRef<DOMRect | null>(null);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragContainerRect.current) return;
+      const rect = dragContainerRect.current;
+      if (dragging === 'col') {
+        setColumnSplit(Math.max(0.15, Math.min(0.85, (e.clientX - rect.left) / rect.width)));
+      } else {
+        setRowSplit(Math.max(0.15, Math.min(0.85, (e.clientY - rect.top) / rect.height)));
+      }
+    };
+    const handleMouseUp = () => {
+      setDragging(null);
+      dragContainerRect.current = null;
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragging]);
+
+  const onDividerMouseDown = useCallback(
+    (type: 'col' | 'row', e: React.MouseEvent) => {
+      e.preventDefault();
+      if (!containerRef.current) return;
+      dragContainerRect.current = containerRef.current.getBoundingClientRect();
+      setDragging(type);
+    },
+    []
   );
 
-  const dragRef = useRef<{ idx: number; startY: number; startH: number } | null>(null);
-
-  // Keyboard shortcuts
   useKeyboardShortcuts({
     "Ctrl+.": () => toggleDrawer(),
-    "Ctrl+Shift+P": () => {
-      if (panes.length > 0) addPane();
-    },
+    "Ctrl+Shift+P": () => addPane(),
     "Ctrl+Shift+M": () => toggleLinkedMode(),
+    "Ctrl+T": () => useLayoutStore.getState().addWorkspace(),
   });
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    let rafId: number;
     const ro = new ResizeObserver((entries) => {
-      for (const e of entries) {
-        setContainerWidth(e.contentRect.width);
-      }
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        for (const e of entries) {
+          setContainerWidth(e.contentRect.width);
+          setContainerHeight(e.contentRect.height);
+        }
+      });
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => { cancelAnimationFrame(rafId); ro.disconnect(); };
   }, []);
-
-  useEffect(() => {
-    resizeTick.current += 1;
-  }, [panes.length]);
 
   const handleSelectSymbol = useCallback(
     (symbol: string) => {
-      if (panes.length > 0) {
-        updatePane(panes[0].id, { symbol });
-      }
+      if (panes.length > 0) updatePane(panes[0].id, { symbol });
     },
     [panes, updatePane]
   );
 
-  const handleMouseDown = (idx: number, e: React.MouseEvent) => {
-    e.preventDefault();
-    dragRef.current = { idx, startY: e.clientY, startH: paneHeights[idx] };
-    const onMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return;
-      const delta = ev.clientY - dragRef.current.startY;
-      const newH = Math.max(100, dragRef.current.startH + delta);
-      setPaneHeights((prev) => {
-        const next = [...prev];
-        next[dragRef.current!.idx] = newH;
-        return next;
-      });
-    };
-    const onUp = () => {
-      dragRef.current = null;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
-
-  const syncHeights = () => {
-    const total = window.innerHeight - 28;
-    const each = Math.max(150, Math.floor(total / Math.max(panes.length, 1)));
-    setPaneHeights(panes.map(() => each));
-  };
+  const gridCols = responsive.isMobile ? 1 : 2;
+  const gridRows = gridCols > 0 ? Math.ceil(panes.length / gridCols) : 1;
+  const hasMultipleCols = gridCols > 1;
+  const hasMultipleRows = gridRows > 1;
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      {/* Tools Drawer overlay */}
+    <div className="h-screen flex flex-col overflow-hidden bg-surface">
       <ToolsDrawer />
 
-      {/* Top bar — glass morphism header */}
-      <div className="h-7 glass-card rounded-none border-x-0 border-t-0 flex items-center px-2 md:px-3 gap-1 md:gap-2 shrink-0 z-10">
-        <div className="flex items-center gap-1 md:gap-2 min-w-0">
-          <span className="text-sm font-bold text-gradient tracking-wide shrink-0">Aegis</span>
-          <span className="text-[10px] text-gray-600 font-mono hidden sm:inline">v0.2</span>
+      {/* Top bar */}
+      <div className="h-9 bg-surface-alt border-b border-surface-border flex items-center px-3 gap-3 shrink-0 z-10">
+        {/* Brand */}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-bold text-gradient tracking-wide">Aegis</span>
+          <span className="text-[10px] text-text-tertiary font-mono hidden sm:inline">Terminal</span>
         </div>
 
-        {/* Tools button */}
+        {/* Mobile tools */}
         <button
-          className="md:hidden ml-1 w-6 h-6 flex items-center justify-center rounded text-gray-500 hover:text-white hover:bg-glass-white-hover transition-all shrink-0"
+          className="md:hidden w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
           onClick={() => toggleDrawer()}
           title="Tools"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
+          <Settings size={14} />
         </button>
 
-        <div className="flex items-center gap-1 ml-auto">
-          {/* Keyboard shortcut hint */}
-          <span className="text-[9px] text-gray-700 font-mono hidden lg:inline">
+        <div className="flex items-center gap-1.5 ml-auto">
+          {/* Keyboard hint */}
+          <span className="text-[9px] text-text-muted font-mono hidden lg:inline">
             <kbd className="text-[8px] border border-surface-border rounded px-1 py-0.5">Ctrl+.</kbd>
           </span>
 
-          {/* Linked mode toggle */}
+          {/* Linked mode */}
           <button
-            className={`text-[10px] px-1.5 md:px-2 py-0.5 rounded transition-all duration-150 whitespace-nowrap ${
+            className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium transition-all ${
               linkedMode
-                ? "bg-accent-blue/15 text-accent-blue border border-accent-blue/30 shadow-glow"
-                : "bg-glass-white text-gray-500 hover:text-white hover:bg-glass-white-hover border border-transparent"
+                ? "bg-accent-blue/12 text-accent-blue border border-accent-blue/25 shadow-glow"
+                : "text-text-secondary hover:text-text-primary hover:bg-surface-hover border border-transparent"
             }`}
             onClick={toggleLinkedMode}
-            title={linkedMode ? "Linked mode active — all panes sync" : "Click to link all panes"}
+            title={linkedMode ? "Linked mode active" : "Link all panes"}
           >
-            <span className="flex items-center gap-1">
-              {linkedMode ? "🔗" : "⊘"}
-              <span className="hidden sm:inline text-[10px]">Link</span>
-            </span>
+            {linkedMode ? <Link2 size={12} /> : <Link2Off size={12} />}
+            <span className="hidden sm:inline">Link</span>
           </button>
 
-          {/* Tools button — desktop */}
+          {/* Tools — desktop */}
           <button
-            className="hidden md:flex text-[10px] px-2 py-0.5 rounded bg-glass-white text-gray-500 hover:text-white hover:bg-glass-white-hover border border-transparent transition-all duration-150 items-center gap-1"
+            className="hidden md:flex items-center gap-1 px-2 py-1 rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors border border-transparent"
             onClick={() => toggleDrawer()}
-            title="Toggle Tools Drawer"
+            title="Tools"
           >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-            <span className="hidden lg:inline text-[10px]">Tools</span>
+            <LayoutGrid size={12} />
+            <span className="hidden lg:inline">Tools</span>
           </button>
 
           {/* Pane controls */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
-              className="text-[10px] px-1.5 md:px-2 py-0.5 rounded bg-glass-white text-gray-500 hover:text-white hover:bg-glass-white-hover border border-transparent transition-all duration-150 whitespace-nowrap"
+              className="flex items-center gap-0.5 px-2 py-1 rounded text-[11px] text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors border border-transparent"
               onClick={() => addPane()}
               title="Add pane"
             >
-              <span className="hidden sm:inline">+</span>
-              <span className="sm:hidden">+</span>
-              <span className="hidden md:inline ml-0.5">Pane</span>
+              <Plus size={12} />
+              <span className="hidden md:inline">Pane</span>
             </button>
             <button
-              className={`text-[10px] px-1.5 md:px-2 py-0.5 rounded border border-transparent transition-all duration-150 ${
+              className={`flex items-center gap-0.5 px-2 py-1 rounded text-[11px] transition-colors border border-transparent ${
                 panes.length > 1
-                  ? "bg-glass-white text-gray-500 hover:text-white hover:bg-glass-white-hover"
-                  : "text-gray-700 cursor-not-allowed"
+                  ? "text-text-secondary hover:text-text-primary hover:bg-surface-hover"
+                  : "text-text-muted cursor-not-allowed"
               }`}
-              onClick={() => {
-                if (panes.length > 1) {
-                  removePane(panes[panes.length - 1].id);
-                  syncHeights();
-                }
-              }}
+              onClick={() => { if (panes.length > 1) removePane(panes[panes.length - 1].id); }}
               title="Remove pane"
             >
-              <span className="hidden sm:inline">−</span>
-              <span className="sm:hidden">−</span>
-              <span className="hidden md:inline ml-0.5">Pane</span>
+              <Minus size={12} />
+              <span className="hidden md:inline">Pane</span>
             </button>
           </div>
         </div>
       </div>
 
+      {/* Cursor overlay when dragging */}
+      {dragging && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, cursor: dragging === 'col' ? 'col-resize' : 'row-resize' }} />
+      )}
+
+      <WorkspaceTabs />
+
       <div className="flex flex-1 min-h-0">
         <Sidebar onSelectSymbol={handleSelectSymbol} />
-        <div ref={containerRef} className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <div ref={containerRef} className="flex-1 min-w-0 overflow-hidden">
           {panes.length === 0 ? (
-            <div className="flex-1 flex items-center justify-center text-gray-600">
-              <div className="text-center space-y-2">
-                <svg className="w-10 h-10 mx-auto opacity-20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
-                  <rect x="3" y="3" width="7" height="7" />
-                  <rect x="14" y="3" width="7" height="7" />
-                  <rect x="3" y="14" width="7" height="7" />
-                  <rect x="14" y="14" width="7" height="7" />
-                </svg>
-                <div className="text-xs">No panes open</div>
-                <button className="btn-ghost text-[10px]" onClick={() => addPane()}>
-                  + Add Pane
+            <div className="h-full flex items-center justify-center text-text-tertiary">
+              <div className="text-center space-y-3">
+                <LayoutGrid size={32} className="mx-auto opacity-20" />
+                <div className="text-sm">No panes open</div>
+                <button className="btn-ghost text-xs" onClick={() => addPane()}>
+                  <Plus size={14} /> Add Pane
                 </button>
               </div>
             </div>
           ) : (
-            panes.map((pane, i) => (
-              <div key={pane.id} className="flex flex-col shrink-0" style={{ height: paneHeights[i] || 200 }}>
-                <div className="flex-1 min-h-0">
-                  <Pane
-                    pane={pane}
-                    height={paneHeights[i] || 200}
-                    containerWidth={containerWidth}
-                    resizeKey={resizeTick.current}
-                  />
-                </div>
-                {i < panes.length - 1 && (
-                  <div
-                    className="h-[3px] bg-surface-border relative cursor-row-resize group shrink-0 z-10"
-                    onMouseDown={(e) => handleMouseDown(i, e)}
-                  >
-                    <div className="absolute -top-1.5 left-0 right-0 h-4" />
-                    <div className="absolute inset-0 bg-surface-border group-hover:bg-accent-blue/40 group-hover:shadow-glow transition-all duration-150 rounded-full" />
+            <div
+              className="grid w-full h-full pane-resize-container"
+              style={{
+                gridTemplateColumns: hasMultipleCols ? `${columnSplit}fr ${1 - columnSplit}fr` : '1fr',
+                gridTemplateRows: hasMultipleRows ? `${rowSplit}fr ${1 - rowSplit}fr` : '1fr',
+                gap: '2px',
+              }}
+            >
+              {panes.map((pane, index) => {
+                const colIndex = index % gridCols;
+                const colWidth = hasMultipleCols
+                  ? (colIndex === 0 ? columnSplit : 1 - columnSplit) * containerWidth
+                  : containerWidth;
+                return (
+                  <div key={pane.id} className="min-h-0 min-w-0 overflow-hidden relative">
+                    <Pane pane={pane} containerWidth={colWidth} containerHeight={containerHeight} />
                   </div>
-                )}
-              </div>
-            ))
+                );
+              })}
+
+              {/* Vertical divider */}
+              {hasMultipleCols && (
+                <div
+                  className={`pane-resize-handle ${dragging === 'col' ? 'dragging' : ''}`}
+                  style={{ position: 'absolute', left: `calc(${columnSplit * 100}% - 6px)`, top: 0, width: '12px', height: '100%', cursor: 'col-resize', zIndex: 20 }}
+                  onMouseDown={(e) => onDividerMouseDown('col', e)}
+                >
+                  <div className="pane-resize-handle-knob" />
+                </div>
+              )}
+
+              {/* Horizontal divider */}
+              {hasMultipleRows && (
+                <div
+                  className={`pane-resize-handle pane-resize-handle-h ${dragging === 'row' ? 'dragging' : ''}`}
+                  style={{ position: 'absolute', top: `calc(${rowSplit * 100}% - 6px)`, left: 0, width: '100%', height: '12px', cursor: 'row-resize', zIndex: 20 }}
+                  onMouseDown={(e) => onDividerMouseDown('row', e)}
+                >
+                  <div className="pane-resize-handle-knob-h" />
+                </div>
+              )}
+
+              {/* Intersection dot */}
+              {hasMultipleCols && hasMultipleRows && (
+                <div
+                  className={`pane-resize-intersection ${dragging ? 'dragging' : ''}`}
+                  style={{ position: 'absolute', left: `calc(${columnSplit * 100}% - 6px)`, top: `calc(${rowSplit * 100}% - 6px)`, width: '12px', height: '12px', zIndex: 21, cursor: 'all-scroll' }}
+                />
+              )}
+            </div>
           )}
         </div>
       </div>

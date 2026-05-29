@@ -248,10 +248,10 @@ class TestEdgeCases:
         assert r["fully_filled"] is True
 
     def test_negative_quantity(self) -> None:
+        """Negative quantities are passed through (not validated by orderbook)."""
         ob = book_with_last(100.0)
         r = ob.simulate_fill("AAPL", "buy", -5)
-        # Fallback returns negative quantity? Let's see... quantity is used as-is
-        assert r["filled_qty"] == -5  # not validated downstream
+        assert r["filled_qty"] == -5
         assert r["fully_filled"] is True
 
     def test_symbol_is_upper_cased(self) -> None:

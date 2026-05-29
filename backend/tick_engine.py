@@ -24,10 +24,16 @@ class TickEngine:
         self._cumulative_delta: dict[str, float] = {}
         self._sessions: dict[str, str] = {}
 
+    MAX_TICKS = 5000  # Cap per-symbol tick buffer to prevent unbounded memory growth
+
     def process_tick(self, symbol: str, price: float, volume: float, side: str, ts: int) -> dict:
-        self._ticks.setdefault(symbol, []).append({
+        ticks = self._ticks.setdefault(symbol, [])
+        ticks.append({
             "price": price, "volume": volume, "side": side, "timestamp": ts,
         })
+        # Trim to prevent unbounded memory growth
+        if len(ticks) > self.MAX_TICKS:
+            del ticks[: len(ticks) - self.MAX_TICKS]
 
         delta = volume if side == "buy" else -volume
         self._deltas[symbol] = self._deltas.get(symbol, 0) + delta
@@ -38,11 +44,19 @@ class TickEngine:
 
     def _track_session(self, symbol: str, ts: int) -> None:
         hour = (ts // 3600000) % 24
+        # Priority: new_york > london > asian (most active market first)
+        sessions = []
         for name, (start, end) in TRADING_SESSIONS.items():
             if start <= hour < end or (start > end and (hour >= start or hour < end)):
-                self._sessions[symbol] = name
-                return
-        self._sessions[symbol] = "closed"
+                sessions.append(name)
+        if "new_york" in sessions:
+            self._sessions[symbol] = "new_york"
+        elif "london" in sessions:
+            self._sessions[symbol] = "london"
+        elif "asian" in sessions:
+            self._sessions[symbol] = "asian"
+        else:
+            self._sessions[symbol] = "closed"
 
     def _update_candles(self, symbol: str, price: float, volume: float, side: str, ts: int) -> dict:
         result = {}

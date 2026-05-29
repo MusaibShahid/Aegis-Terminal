@@ -95,7 +95,19 @@ async def handle_message(ws: WebSocket, channel: str, msg: dict[str, Any]) -> No
 
     elif msg_type == "bot_toggle":
         bot_name = msg.get("bot", "")
-        await manager.send_to(ws, {"type": "bot_toggled", "bot": bot_name})
+        orchestrator = getattr(manager, "bot_orchestrator", None)
+        if orchestrator:
+            bot = orchestrator.toggle_bot(bot_name)
+            if bot:
+                await manager.send_to(ws, {
+                    "type": "bot_toggled",
+                    "bot": bot_name,
+                    "enabled": bot.enabled,
+                })
+            else:
+                await manager.send_to(ws, {"type": "bot_error", "message": f"Bot '{bot_name}' not found"})
+        else:
+            await manager.send_to(ws, {"type": "bot_error", "message": "Bot orchestrator not available"})
 
     elif msg_type == "alert_toggle":
         alert_id = msg.get("alert_id")
@@ -106,6 +118,38 @@ async def handle_message(ws: WebSocket, channel: str, msg: dict[str, Any]) -> No
         await manager.send_to(ws, {"type": "alert_created", "alert": alert_data})
 
     # --- Paper Trading ---
+
+    elif msg_type == "bot_create":
+        orchestrator = getattr(manager, "bot_orchestrator", None)
+        if orchestrator:
+            try:
+                config = msg.get("config", {})
+                config["enabled"] = config.get("enabled", True)
+                bot = orchestrator.add_bot(config)
+                await manager.send_to(ws, {"type": "bot_created", "bot": bot.to_dict()})
+            except ValueError as e:
+                await manager.send_to(ws, {"type": "bot_error", "message": str(e)})
+        else:
+            await manager.send_to(ws, {"type": "bot_error", "message": "Bot orchestrator not available"})
+
+    elif msg_type == "bot_remove":
+        orchestrator = getattr(manager, "bot_orchestrator", None)
+        if orchestrator:
+            name = msg.get("name", "")
+            if orchestrator.remove_bot(name):
+                await manager.send_to(ws, {"type": "bot_removed", "name": name})
+            else:
+                await manager.send_to(ws, {"type": "bot_error", "message": f"Bot '{name}' not found"})
+        else:
+            await manager.send_to(ws, {"type": "bot_error", "message": "Bot orchestrator not available"})
+
+    elif msg_type == "bot_list":
+        orchestrator = getattr(manager, "bot_orchestrator", None)
+        if orchestrator:
+            bots = orchestrator.list_bots()
+            await manager.send_to(ws, {"type": "bot_list", "bots": bots})
+        else:
+            await manager.send_to(ws, {"type": "bot_error", "message": "Bot orchestrator not available"})
 
     elif msg_type == "paper_create_order":
         engine: PaperTradingEngine | None = getattr(manager, "paper_trading", None)
@@ -184,6 +228,86 @@ async def handle_message(ws: WebSocket, channel: str, msg: dict[str, Any]) -> No
         if engine:
             await engine.reset()
             await manager.send_to(ws, {"type": "paper_reset_done", **engine.stats})
+
+    # --- Live MT5 Trading ---
+
+    elif msg_type == "live_enable":
+        live = getattr(manager, "live_trading", None)
+        if not live:
+            await manager.send_to(ws, {"type": "live_error", "message": "Live trading engine not available"})
+            return
+        enabled = msg.get("enabled", True)
+        live.set_enabled(enabled)
+        await manager.send_to(ws, {"type": "live_status", **live.status()})
+
+    elif msg_type == "live_send_order":
+        live = getattr(manager, "live_trading", None)
+        if not live:
+            await manager.send_to(ws, {"type": "live_error", "message": "Live trading engine not available"})
+            return
+        result = await live.send_market_order(
+            symbol=msg.get("symbol", ""),
+            side=msg.get("side", "buy"),
+            volume=msg.get("volume", 0.1),
+            price=msg.get("price"),
+            sl=msg.get("sl"),
+            tp=msg.get("tp"),
+            deviation=msg.get("deviation", 10),
+            comment=msg.get("comment", "aegis_manual"),
+            reason=msg.get("reason"),
+        )
+        if "error" in result:
+            await manager.send_to(ws, {"type": "live_error", "message": result["error"]})
+        else:
+            await manager.send_to(ws, {"type": "live_order_result", "result": result})
+
+    elif msg_type == "live_close_position":
+        live = getattr(manager, "live_trading", None)
+        if not live:
+            await manager.send_to(ws, {"type": "live_error", "message": "Live trading engine not available"})
+            return
+        result = await live.close_market_position(
+            symbol=msg.get("symbol", ""),
+            volume=msg.get("volume", 0.1),
+            price=msg.get("price", 0),
+            deviation=msg.get("deviation", 10),
+            reason=msg.get("reason"),
+        )
+        if "error" in result:
+            await manager.send_to(ws, {"type": "live_error", "message": result["error"]})
+        else:
+            await manager.send_to(ws, {"type": "live_close_result", "result": result})
+
+    elif msg_type == "live_sync_positions":
+        live = getattr(manager, "live_trading", None)
+        if not live:
+            await manager.send_to(ws, {"type": "live_error", "message": "Live trading engine not available"})
+            return
+        positions = await live.sync_positions()
+        await manager.send_to(ws, {"type": "live_positions", "positions": positions, "count": len(positions)})
+
+    elif msg_type == "live_sync_orders":
+        live = getattr(manager, "live_trading", None)
+        if not live:
+            await manager.send_to(ws, {"type": "live_error", "message": "Live trading engine not available"})
+            return
+        orders = await live.sync_orders()
+        await manager.send_to(ws, {"type": "live_orders", "orders": orders, "count": len(orders)})
+
+    elif msg_type == "live_account_info":
+        live = getattr(manager, "live_trading", None)
+        if not live:
+            await manager.send_to(ws, {"type": "live_error", "message": "Live trading engine not available"})
+            return
+        info = await live.get_account_info()
+        await manager.send_to(ws, {"type": "live_account_info", **info})
+
+    elif msg_type == "live_status":
+        live = getattr(manager, "live_trading", None)
+        if not live:
+            await manager.send_to(ws, {"type": "live_error", "message": "Live trading engine not available"})
+            return
+        await manager.send_to(ws, {"type": "live_status", **live.status()})
 
     else:
         await manager.send_to(ws, {"error": f"unknown_type: {msg_type}"})

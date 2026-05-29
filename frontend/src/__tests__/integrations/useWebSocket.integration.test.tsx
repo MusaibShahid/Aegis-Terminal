@@ -456,6 +456,7 @@ describe("useWebSocket → store integration", () => {
         interval: "5m",
         indicators: [],
         oscillators: [],
+        pineScripts: [],
         chartType: "candle",
         linked: false,
       });

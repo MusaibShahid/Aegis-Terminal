@@ -126,13 +126,22 @@ class CandleAggregator:
         key = f"{symbol}:{interval}"
         c = self._agg.get(key)
         if c:
-            c["remaining_seconds"] = max(0, (c["close_time"] - self._now_ms()) // 1000)
-        return c
+            copy = dict(c)
+            copy["remaining_seconds"] = max(0, (c["close_time"] - self._now_ms()) // 1000)
+            return copy
+        return None
 
     def get_all_candles(self, symbol: str) -> dict[str, dict]:
-        """Return all current partial candles for a symbol, keyed by interval."""
+        """Return copies of all current partial candles for a symbol, keyed by interval."""
         prefix = f"{symbol}:"
-        return {k.split(":")[1]: v for k, v in self._agg.items() if k.startswith(prefix)}
+        now_ms = self._now_ms()
+        result = {}
+        for k, v in self._agg.items():
+            if k.startswith(prefix):
+                copy = dict(v)
+                copy["remaining_seconds"] = max(0, (v["close_time"] - now_ms) // 1000)
+                result[k.split(":")[1]] = copy
+        return result
 
     @staticmethod
     def _now_ms() -> int:

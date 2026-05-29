@@ -126,16 +126,32 @@ export interface LiquiditySweep {
 
 export interface IndicatorOverlay {
   id: string;
-  type: "sma" | "ema" | "wma" | "hma" | "vwap" | "bollinger" | "keltner" | "parabolic_sar";
+  type: "sma" | "ema" | "wma" | "hma" | "vwap" | "bollinger" | "keltner" | "parabolic_sar" | "supertrend" | "ichimoku" | "crt" | "adx";
   paneId: string;
   params: Record<string, number>;
 }
 
 export interface IndicatorOscillator {
   id: string;
-  type: "rsi" | "macd" | "stochastic" | "cci" | "williams_r" | "atr";
+  type: "rsi" | "macd" | "stochastic" | "cci" | "williams_r" | "atr" | "adx";
   paneId: string;
   params: Record<string, number>;
+}
+
+export interface WorkspaceConfig {
+  id: string;
+  name: string;
+  panes: PaneConfig[];
+}
+
+// --- Pine Script Custom Indicator ---
+export interface PineScriptIndicator {
+  id: string;
+  name: string;
+  code: string;
+  paneId: string;
+  params?: Record<string, number>;
+  color?: string;
 }
 
 // --- Pane & Layout ---
@@ -146,7 +162,8 @@ export interface PaneConfig {
   interval: string;
   indicators: (IndicatorOverlay | IndicatorOscillator)[];
   oscillators: OscillatorConfig[];
-  chartType: "candle" | "footprint" | "delta" | "depth" | "heatmap" | "vpvr";
+  pineScripts: PineScriptIndicator[];
+  chartType: "candle" | "footprint" | "delta" | "depth" | "heatmap" | "vpvr" | "candle_footprint";
   linked: boolean;
 }
 
@@ -154,6 +171,7 @@ export interface LayoutConfig {
   id?: string;
   name: string;
   panes: PaneConfig[];
+  pineScripts?: PineScriptIndicator[];
 }
 
 // --- Instrument ---
@@ -251,9 +269,11 @@ export interface BotConfig {
   name: string;
   strategy: "ema_crossover" | "rsi" | "macd" | "bollinger";
   symbol: string;
+  interval?: string;
   params: Record<string, number>;
   riskParams: Record<string, number>;
   enabled: boolean;
+  liveMode?: boolean;
 }
 
 export interface BotSignal {
@@ -265,6 +285,7 @@ export interface BotSignal {
   price: number;
   volume: number;
   time: number;
+  order_executed?: boolean;
 }
 
 // --- Replay ---

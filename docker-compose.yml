@@ -1,7 +1,7 @@
-version: "3.9"
-
 services:
   backend:
+    networks:
+      - aegis-net
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -11,23 +11,36 @@ services:
     env_file:
       - ./backend/.env
     volumes:
-      - ./backend:/app
       - aegis_data:/app/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
-  frontend:
+  nginx:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: aegis-frontend
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: aegis-nginx
     ports:
-      - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      - "80:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - aegis-net
 
 volumes:
   aegis_data:
+
+networks:
+  aegis-net:

@@ -4,8 +4,8 @@ import type { WatchlistGroup } from "../types";
 
 const DEFAULT_GROUPS: WatchlistGroup[] = [
   { name: "Crypto", symbols: ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"], color: "#f59e0b", order: 0 },
-  { name: "Metals", symbols: ["XAUUSDT", "XAGUSDT"], color: "#3b82f6", order: 1 },
-  { name: "Forex", symbols: ["EURUSDT", "GBPUSDT"], color: "#10b981", order: 2 },
+  { name: "Metals", symbols: ["XAUUSD", "XAGUSD"], color: "#3b82f6", order: 1 },
+  { name: "Forex", symbols: ["EURUSD", "GBPUSD"], color: "#10b981", order: 2 },
 ];
 
 interface WatchlistState {
@@ -100,7 +100,7 @@ export const useWatchlistStore = create<WatchlistState>((set) => ({
     set((s) => {
       const next = s.groups.map((g) =>
         g.name === groupName
-          ? { ...g, symbols: g.symbols.filter((s) => s !== symbol) }
+          ? { ...g, symbols: g.symbols.filter((sym) => sym !== symbol) }
           : g
       );
       localStorage.setItem("aegis_watchlists", JSON.stringify(next));

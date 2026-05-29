@@ -71,6 +71,149 @@ def handle_fetch_history(request: dict) -> None:
         emit({"type": "history_result", "id": req_id, "error": str(exc)})
 
 
+def handle_order_send(request: dict) -> None:
+    """Send a trade order to MT5."""
+    req_id = request.get("id", 0)
+    try:
+        order_request = {
+            "action": request.get("action", mt5.TRADE_ACTION_DEAL),
+            "symbol": request.get("symbol", ""),
+            "volume": request.get("volume", 0.1),
+            "price": request.get("price", 0.0),
+            "sl": request.get("sl", 0.0),
+            "tp": request.get("tp", 0.0),
+            "deviation": request.get("deviation", 10),
+            "type": request.get("type", mt5.ORDER_TYPE_BUY),
+            "type_filling": request.get("type_filling", mt5.ORDER_FILLING_IOC),
+            "type_time": request.get("type_time", mt5.ORDER_TIME_GTC),
+            "magic": request.get("magic", 12345),
+            "comment": request.get("comment", "aegis_live"),
+        }
+        result = mt5.order_send(order_request)
+        emit({
+            "type": "order_result",
+            "id": req_id,
+            "retcode": result.retcode,
+            "deal": result.deal,
+            "order": result.order,
+            "volume": result.volume,
+            "price": result.price,
+            "comment": result.comment,
+            "error": mt5.last_error() if result.retcode != 10009 else None,
+        })
+    except Exception as exc:
+        emit({"type": "order_result", "id": req_id, "error": str(exc)})
+
+
+def handle_positions_get(request: dict) -> None:
+    """Get open positions from MT5."""
+    req_id = request.get("id", 0)
+    try:
+        symbol = request.get("symbol", None)
+        if symbol:
+            positions = mt5.positions_get(symbol=symbol)
+        else:
+            positions = mt5.positions_get()
+        result_list = []
+        if positions and len(positions) > 0:
+            for p in positions:
+                result_list.append({
+                    "ticket": p.ticket,
+                    "symbol": p.symbol,
+                    "type": p.type,
+                    "volume": p.volume,
+                    "price_open": p.price_open,
+                    "sl": p.sl,
+                    "tp": p.tp,
+                    "price_current": p.price_current,
+                    "profit": p.profit,
+                    "swap": p.swap,
+                    "commission": p.commission,
+                    "magic": p.magic,
+                    "comment": p.comment,
+                    "time": p.time,
+                })
+        emit({"type": "positions_result", "id": req_id, "positions": result_list})
+    except Exception as exc:
+        emit({"type": "positions_result", "id": req_id, "error": str(exc)})
+
+
+def handle_orders_get(request: dict) -> None:
+    """Get pending orders from MT5."""
+    req_id = request.get("id", 0)
+    try:
+        symbol = request.get("symbol", None)
+        if symbol:
+            orders = mt5.orders_get(symbol=symbol)
+        else:
+            orders = mt5.orders_get()
+        result_list = []
+        if orders and len(orders) > 0:
+            for o in orders:
+                result_list.append({
+                    "ticket": o.ticket,
+                    "symbol": o.symbol,
+                    "type": o.type,
+                    "volume": o.volume,
+                    "price_open": o.price_open,
+                    "sl": o.sl,
+                    "tp": o.tp,
+                    "price_current": o.price_current,
+                    "magic": o.magic,
+                    "comment": o.comment,
+                    "time_setup": o.time_setup,
+                    "time_expiration": o.time_expiration,
+                })
+        emit({"type": "orders_result", "id": req_id, "orders": result_list})
+    except Exception as exc:
+        emit({"type": "orders_result", "id": req_id, "error": str(exc)})
+
+
+def handle_account_info(request: dict) -> None:
+    """Get MT5 account information."""
+    req_id = request.get("id", 0)
+    try:
+        info = mt5.account_info()
+        if info:
+            emit({
+                "type": "account_info",
+                "id": req_id,
+                "login": info.login,
+                "server": info.server,
+                "balance": info.balance,
+                "equity": info.equity,
+                "margin": info.margin,
+                "margin_free": info.margin_free,
+                "margin_level": info.margin_level,
+                "currency": info.currency,
+                "leverage": info.leverage,
+                "name": info.name,
+            })
+        else:
+            emit({"type": "account_info", "id": req_id, "error": "account_info returned None"})
+    except Exception as exc:
+        emit({"type": "account_info", "id": req_id, "error": str(exc)})
+
+
+def handle_calc_margin(request: dict) -> None:
+    """Calculate margin required for a trade."""
+    req_id = request.get("id", 0)
+    try:
+        action = request.get("action", mt5.ORDER_TYPE_BUY)
+        symbol = request.get("symbol", "")
+        volume = request.get("volume", 0.1)
+        price = request.get("price", 0.0)
+        margin = mt5.order_calc_margin(action, symbol, volume, price)
+        emit({
+            "type": "margin_result",
+            "id": req_id,
+            "margin": float(margin) if margin is not None else 0.0,
+            "error": mt5.last_error() if margin is None else None,
+        })
+    except Exception as exc:
+        emit({"type": "margin_result", "id": req_id, "error": str(exc)})
+
+
 def stdin_reader():
     """Read JSON commands from stdin in a background thread."""
     for line in sys.stdin:
@@ -82,6 +225,16 @@ def stdin_reader():
             cmd = req.get("command", "")
             if cmd == "fetch_history":
                 handle_fetch_history(req)
+            elif cmd == "order_send":
+                handle_order_send(req)
+            elif cmd == "positions_get":
+                handle_positions_get(req)
+            elif cmd == "orders_get":
+                handle_orders_get(req)
+            elif cmd == "account_info":
+                handle_account_info(req)
+            elif cmd == "calc_margin":
+                handle_calc_margin(req)
         except json.JSONDecodeError:
             pass
 

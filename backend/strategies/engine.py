@@ -113,6 +113,12 @@ class BacktestEngine:
             ret = (price - self.entry_price) / self.entry_price
             self.result.trades.append({"entry": self.entry_price, "exit": price, "return": ret})
             self.result.pnl += ret
+            # Track peak equity and drawdown
+            if self.result.pnl > self.result.peak:
+                self.result.peak = self.result.pnl
+            current_drawdown = self.result.peak - self.result.pnl
+            if current_drawdown > self.result.drawdown:
+                self.result.drawdown = current_drawdown
             if ret > 0:
                 self.result.wins += 1
             else:

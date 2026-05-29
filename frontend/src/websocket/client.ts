@@ -60,10 +60,18 @@ export class WSClient {
   }
 
   private reconnect() {
-    if (this.reconnectAttempts >= this.maxReconnect) return;
-    const delay = this.baseDelay * Math.pow(2, this.reconnectAttempts);
+    if (this.reconnectAttempts >= this.maxReconnect) {
+      console.warn(`[WSClient] Max reconnection attempts (${this.maxReconnect}) reached. Giving up.`);
+      return;
+    }
+    const delay = Math.min(this.baseDelay * Math.pow(2, this.reconnectAttempts), 30_000);
     this.reconnectAttempts++;
     setTimeout(() => this.connect(), delay);
+  }
+
+  removeAllHandlers() {
+    this.messageHandlers.clear();
+    this.candleHandlers.clear();
   }
 
   private startHeartbeat() {

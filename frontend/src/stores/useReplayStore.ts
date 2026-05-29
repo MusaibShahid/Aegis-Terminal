@@ -3,14 +3,19 @@ import type { ReplayState } from "../types";
 
 interface ReplayStore extends ReplayState {
   symbol: string;
+  currentIndex: number;
+  totalCandles: number;
   loaded: boolean;
   loading: boolean;
   error: string | null;
+  isPlaying: boolean;
   setPlaying: (playing: boolean) => void;
   setSpeed: (speed: number) => void;
   setProgress: (progress: number) => void;
   stepForward: (count?: number) => void;
   loadReplay: (symbol: string, interval?: string) => Promise<void>;
+  startReplay: (symbol: string, interval?: string) => Promise<void>;
+  stopReplay: () => void;
   reset: () => void;
 }
 
@@ -46,9 +51,12 @@ export const useReplayStore = create<ReplayStore>((set, get) => {
 
   return {
     playing: false,
+    isPlaying: false,
     speed: 1,
     progress: 0,
     tickCount: 0,
+    currentIndex: 0,
+    totalCandles: 0,
     symbol: "BTCUSDT",
     loaded: false,
     loading: false,
@@ -61,7 +69,7 @@ export const useReplayStore = create<ReplayStore>((set, get) => {
       } else {
         send({ type: "replay_pause" });
       }
-      set({ playing });
+      set({ playing, isPlaying: playing });
     },
 
     setSpeed: (speed) => {
@@ -75,7 +83,7 @@ export const useReplayStore = create<ReplayStore>((set, get) => {
     stepForward: (count = 1) => {
       connectWs();
       send({ type: "replay_step", count });
-      set((s) => ({ tickCount: s.tickCount + count }));
+      set((s) => ({ tickCount: s.tickCount + count, currentIndex: s.tickCount + count }));
     },
 
     loadReplay: async (symbol, interval = "1m") => {
@@ -88,7 +96,14 @@ export const useReplayStore = create<ReplayStore>((set, get) => {
         });
         const data = await res.json();
         if (data.ok) {
-          set({ loaded: true, loading: false, progress: 0, tickCount: 0 });
+          set({
+            loaded: true,
+            loading: false,
+            progress: 0,
+            tickCount: 0,
+            currentIndex: 0,
+            totalCandles: data.count || 500,
+          });
         } else {
           set({ error: data.error || "Failed to load replay", loading: false });
         }
@@ -97,9 +112,29 @@ export const useReplayStore = create<ReplayStore>((set, get) => {
       }
     },
 
+    startReplay: async (symbol, interval = "1m") => {
+      await get().loadReplay(symbol, interval);
+      get().setPlaying(true);
+    },
+
+    stopReplay: () => {
+      send({ type: "replay_stop" });
+      set({
+        playing: false, isPlaying: false,
+        speed: 1, progress: 0, tickCount: 0,
+        currentIndex: 0, totalCandles: 0,
+        loaded: false, error: null,
+      });
+    },
+
     reset: () => {
       send({ type: "replay_stop" });
-      set({ playing: false, speed: 1, progress: 0, tickCount: 0, loaded: false, error: null });
+      set({
+        playing: false, isPlaying: false,
+        speed: 1, progress: 0, tickCount: 0,
+        currentIndex: 0, totalCandles: 0,
+        loaded: false, error: null,
+      });
     },
   };
 });

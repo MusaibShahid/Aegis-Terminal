@@ -1,14 +1,13 @@
 import { describe, expect, it, beforeEach } from "vitest";
 
 import { useAlertStore } from "../useAlertStore";
-import type { AlertConfig } from "../../types";
+import type { PriceAlert } from "../useAlertStore";
 
-const mockAlert = (overrides?: Partial<AlertConfig>): AlertConfig => ({
+const mockAlert = (overrides?: Partial<PriceAlert>): PriceAlert => ({
   id: 1,
-  name: "Price Alert",
-  type: "price",
-  condition: { operator: ">", value: 50000 },
   symbol: "BTCUSDT",
+  condition: ">",
+  price: 50000,
   enabled: true,
   ...overrides,
 });
@@ -30,24 +29,27 @@ describe("useAlertStore", () => {
   });
 
   it("addAlert appends an alert", () => {
-    useAlertStore.getState().addAlert(mockAlert({ id: 1 }));
-    useAlertStore.getState().addAlert(mockAlert({ id: 2 }));
+    useAlertStore.getState().addAlert({ symbol: "BTCUSDT", condition: ">", price: 50000 });
+    useAlertStore.getState().addAlert({ symbol: "ETHUSDT", condition: "<", price: 2000 });
     expect(useAlertStore.getState().alerts).toHaveLength(2);
   });
 
   it("removeAlert removes by id", () => {
-    useAlertStore.getState().addAlert(mockAlert({ id: 1 }));
-    useAlertStore.getState().addAlert(mockAlert({ id: 2 }));
-    useAlertStore.getState().removeAlert(1);
+    useAlertStore.getState().addAlert({ symbol: "BTCUSDT", condition: ">", price: 50000 });
+    const firstId = useAlertStore.getState().alerts[0].id;
+    useAlertStore.getState().addAlert({ symbol: "ETHUSDT", condition: "<", price: 2000 });
+    useAlertStore.getState().removeAlert(firstId);
     expect(useAlertStore.getState().alerts).toHaveLength(1);
-    expect(useAlertStore.getState().alerts[0].id).toBe(2);
+    expect(useAlertStore.getState().alerts[0].symbol).toBe("ETHUSDT");
   });
 
   it("toggleAlert flips enabled flag", () => {
-    useAlertStore.getState().addAlert(mockAlert({ id: 1, enabled: true }));
-    useAlertStore.getState().toggleAlert(1);
+    useAlertStore.getState().addAlert({ symbol: "BTCUSDT", condition: ">", price: 50000 });
+    const id = useAlertStore.getState().alerts[0].id;
+    expect(useAlertStore.getState().alerts[0].enabled).toBe(true);
+    useAlertStore.getState().toggleAlert(id);
     expect(useAlertStore.getState().alerts[0].enabled).toBe(false);
-    useAlertStore.getState().toggleAlert(1);
+    useAlertStore.getState().toggleAlert(id);
     expect(useAlertStore.getState().alerts[0].enabled).toBe(true);
   });
 

@@ -1,0 +1,144 @@
+# ──────────────────────────────────────────────────────────────────────
+# Aegis Terminal — CI Pipeline
+# ──────────────────────────────────────────────────────────────────────
+# Runs on every push to main and every pull request targeting main.
+#
+# Jobs run in parallel (except docker-build which waits for tests):
+#   1. backend-tests      – Python unit tests (pytest)
+#   2. backend-fuzz-tests – Python property-based fuzz tests (hypothesis)
+#   3. frontend-typecheck – TypeScript type-check (tsc --noEmit)
+#   4. frontend-tests     – Vitest unit tests (excl. benchmarks)
+#   5. docker-build       – Verify Docker images compile
+# ──────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ──────────────────────────────────────────────────────────────────────
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+# ──────────────────────────────────────────────────────────────────────
+
+jobs:
+
+  # ── Backend unit tests ────────────────────────────────────────────
+  backend-tests:
+    name: Backend unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unit tests (excl. fuzz)
+        run: python -m pytest tests/ -x -q -k "not fuzz"
+
+  # ── Backend fuzz tests (slower, separate job with longer timeout) ──
+  backend-fuzz-tests:
+    name: Backend fuzz tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt hypothesis
+
+      - name: Run fuzz tests
+        run: python -m pytest tests/test_paper_trading_fuzz.py -x -q
+
+  # ── Frontend TypeScript type-check ────────────────────────────────
+  frontend-typecheck:
+    name: Frontend typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type-check
+        run: npx tsc --noEmit
+
+  # ── Frontend unit tests ───────────────────────────────────────────
+  frontend-tests:
+    name: Frontend unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests (excl. benchmarks)
+        run: npx vitest run --exclude 'src/__tests__/benchmarks/**' --reporter=verbose
+
+  # ── Docker build (verifies images compile) ────────────────────────
+  docker-build:
+    name: Docker build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker images
+        run: docker compose build

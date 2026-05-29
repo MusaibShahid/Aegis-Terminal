@@ -24,14 +24,14 @@ export function DrawingToolbar() {
   const redo = useDrawingStore((s) => s.redo);
 
   return (
-    <div className="flex items-center gap-0.5 px-2 py-1.5 bg-[#0d0f17] border-b border-white/5 shrink-0">
+    <div className="flex items-center gap-0.5 px-2 py-1.5 bg-surface-alt border-b border-surface-border shrink-0">
       {TOOLS.map((t) => (
         <button
           key={t.tool}
           className={`w-7 h-7 flex items-center justify-center text-xs rounded-lg transition-all duration-150 ${
             activeTool?.tool === t.tool
               ? "bg-accent-blue/15 text-accent-blue shadow-[0_0_8px_rgba(59,130,246,0.15)]"
-              : "text-gray-500 hover:text-white hover:bg-white/[0.05]"
+              : "text-text-tertiary hover:text-text-primary hover:bg-surface-hover"
           }`}
           onClick={() => {
             if (t.tool === "eraser") {
@@ -47,23 +47,23 @@ export function DrawingToolbar() {
           {t.label}
         </button>
       ))}
-      <div className="w-px h-5 bg-white/10 mx-1.5" />
+      <div className="w-px h-5 bg-surface-hover mx-1.5" />
       <button
-        className="w-7 h-7 flex items-center justify-center text-xs text-gray-500 hover:text-white hover:bg-white/[0.05] rounded-lg transition-all"
+        className="w-7 h-7 flex items-center justify-center text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-all"
         onClick={undo}
         title="Undo"
       >
         ↩
       </button>
       <button
-        className="w-7 h-7 flex items-center justify-center text-xs text-gray-500 hover:text-white hover:bg-white/[0.05] rounded-lg transition-all"
+        className="w-7 h-7 flex items-center justify-center text-xs text-text-tertiary hover:text-text-primary hover:bg-surface-hover rounded-lg transition-all"
         onClick={redo}
         title="Redo"
       >
         ↪
       </button>
-      <div className="w-px h-5 bg-white/10 mx-1.5" />
-      <span className="text-[10px] text-gray-500 tabular-nums">
+      <div className="w-px h-5 bg-surface-hover mx-1.5" />
+      <span className="text-[10px] text-text-tertiary tabular-nums">
         {drawings.length}
       </span>
     </div>

@@ -1,0 +1,57 @@
+src/charts/CandleTooltip.tsx(62,19): error TS2339: Property 'delta' does not exist on type 'CandleMeta'.
+src/charts/CandleTooltip.tsx(65,39): error TS2339: Property 'delta' does not exist on type 'CandleMeta'.
+src/charts/CandleTooltip.tsx(66,25): error TS2339: Property 'delta' does not exist on type 'CandleMeta'.
+src/charts/CandleTooltip.tsx(66,53): error TS2339: Property 'delta' does not exist on type 'CandleMeta'.
+src/charts/CandleTooltip.tsx(70,19): error TS2551: Property 'buyVolume' does not exist on type 'CandleMeta'. Did you mean 'buy_volume'?
+src/charts/CandleTooltip.tsx(73,82): error TS2551: Property 'buyVolume' does not exist on type 'CandleMeta'. Did you mean 'buy_volume'?
+src/charts/CandleTooltip.tsx(76,19): error TS2551: Property 'sellVolume' does not exist on type 'CandleMeta'. Did you mean 'sell_volume'?
+src/charts/CandleTooltip.tsx(79,80): error TS2551: Property 'sellVolume' does not exist on type 'CandleMeta'. Did you mean 'sell_volume'?
+src/charts/ChartTimer.tsx(37,18): error TS2339: Property 'price' does not exist on type 'CandleCountdown'.
+src/charts/ChartTimer.tsx(39,23): error TS2339: Property 'price' does not exist on type 'CandleCountdown'.
+src/charts/DeltaChart.tsx(30,28): error TS2365: Operator '>=' cannot be applied to types '{ buy_volume: number; sell_volume: number; delta: number; total_volume: number; }' and 'number'.
+src/charts/DeltaChart.tsx(31,14): error TS2365: Operator '>=' cannot be applied to types '{ buy_volume: number; sell_volume: number; delta: number; total_volume: number; }' and 'number'.
+src/charts/DeltaChart.tsx(31,70): error TS2339: Property 'toFixed' does not exist on type '{ buy_volume: number; sell_volume: number; delta: number; total_volume: number; }'.
+src/charts/DrawingLayer.tsx(2,32): error TS2459: Module '"../stores/useDrawingStore"' declares 'Drawing' locally, but it is not exported.
+src/charts/DrawingLayer.tsx(16,55): error TS2339: Property 'symbol' does not exist on type 'Drawing'.
+src/charts/OscillatorPanel.tsx(185,56): error TS2531: Object is possibly 'null'.
+src/charts/OscillatorPanel.tsx(185,70): error TS2531: Object is possibly 'null'.
+src/charts/VPVRChart.tsx(55,71): error TS2339: Property 'value_area_high' does not exist on type 'VPVRData'.
+src/charts/VPVRChart.tsx(55,164): error TS2339: Property 'value_area_low' does not exist on type 'VPVRData'.
+src/sidebar/AlertPanel.tsx(15,46): error TS2322: Type 'string' is not assignable to type '{ field?: string | undefined; operator: string; value: number; indicator?: string | undefined; }'.
+  Type 'string' is not assignable to type '{ field?: string | undefined; operator: string; value: number; indicator?: string | undefined; }'.
+src/sidebar/AlertPanel.tsx(91,48): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+src/sidebar/AlertPanel.tsx(102,79): error TS2367: This comparison appears to be unintentional because the types '{ field?: string | undefined; operator: string; value: number; indicator?: string | undefined; }' and 'string' have no overlap.
+src/sidebar/AlertPanel.tsx(103,26): error TS2367: This comparison appears to be unintentional because the types '{ field?: string | undefined; operator: string; value: number; indicator?: string | undefined; }' and 'string' have no overlap.
+src/sidebar/AlertPanel.tsx(103,63): error TS2339: Property 'price' does not exist on type 'AlertConfig'.
+src/sidebar/AlertPanel.tsx(106,24): error TS2339: Property 'note' does not exist on type 'AlertConfig'.
+src/sidebar/AlertPanel.tsx(107,75): error TS2339: Property 'note' does not exist on type 'AlertConfig'.
+src/sidebar/AlertPanel.tsx(113,46): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+src/sidebar/BotPanel.tsx(25,7): error TS2322: Type 'string' is not assignable to type '"bollinger" | "rsi" | "macd" | "ema_crossover"'.
+src/sidebar/BotPanel.tsx(32,38): error TS2345: Argument of type 'string' is not assignable to parameter of type 'number'.
+src/sidebar/BotPanel.tsx(91,46): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+src/sidebar/BotPanel.tsx(99,52): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/sidebar/JournalPanel.tsx(5,20): error TS2339: Property 'addEntry' does not exist on type 'JournalState'.
+src/sidebar/JournalPanel.tsx(74,37): error TS2339: Property 'created_at' does not exist on type 'JournalEntry'.
+src/sidebar/JournalPanel.tsx(84,46): error TS2345: Argument of type 'number | undefined' is not assignable to parameter of type 'number'.
+  Type 'undefined' is not assignable to type 'number'.
+src/sidebar/JournalPanel.tsx(92,31): error TS2339: Property 'map' does not exist on type 'string'.
+src/sidebar/JournalPanel.tsx(92,36): error TS7006: Parameter 'tag' implicitly has an 'any' type.
+src/sidebar/PositionPanel.tsx(1,28): error TS2305: Module '"../stores/useBotStore"' has no exported member 'BotPosition'.
+src/sidebar/PositionPanel.tsx(32,28): error TS2339: Property 'id' does not exist on type '{ bot: string; symbol: string; side: string; price: number; volume: number; }'.
+src/sidebar/PositionPanel.tsx(41,98): error TS2339: Property 'quantity' does not exist on type '{ bot: string; symbol: string; side: string; price: number; volume: number; }'.
+src/sidebar/PositionPanel.tsx(42,99): error TS2339: Property 'entry_price' does not exist on type '{ bot: string; symbol: string; side: string; price: number; volume: number; }'.
+src/sidebar/PositionPanel.tsx(43,85): error TS2339: Property 'pnl' does not exist on type '{ bot: string; symbol: string; side: string; price: number; volume: number; }'.
+src/sidebar/PositionPanel.tsx(44,24): error TS2339: Property 'pnl' does not exist on type '{ bot: string; symbol: string; side: string; price: number; volume: number; }'.
+src/sidebar/PositionPanel.tsx(44,50): error TS2339: Property 'pnl' does not exist on type '{ bot: string; symbol: string; side: string; price: number; volume: number; }'.
+src/sidebar/PositionPanel.tsx(59,74): error TS2339: Property 'pnl' does not exist on type '{ bot: string; symbol: string; side: string; price: number; volume: number; }'.
+src/sidebar/PositionPanel.tsx(60,47): error TS2339: Property 'pnl' does not exist on type '{ bot: string; symbol: string; side: string; price: number; volume: number; }'.
+src/sidebar/PositionPanel.tsx(60,106): error TS2339: Property 'pnl' does not exist on type '{ bot: string; symbol: string; side: string; price: number; volume: number; }'.
+src/sidebar/ReplayPanel.tsx(5,11): error TS2339: Property 'isPlaying' does not exist on type 'ReplayStore'.
+src/sidebar/ReplayPanel.tsx(5,29): error TS2339: Property 'currentIndex' does not exist on type 'ReplayStore'.
+src/sidebar/ReplayPanel.tsx(5,43): error TS2339: Property 'totalCandles' does not exist on type 'ReplayStore'.
+src/sidebar/ReplayPanel.tsx(5,57): error TS2339: Property 'startReplay' does not exist on type 'ReplayStore'.
+src/sidebar/ReplayPanel.tsx(5,70): error TS2339: Property 'stopReplay' does not exist on type 'ReplayStore'.

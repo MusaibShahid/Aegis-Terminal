@@ -1,21 +1,76 @@
+import asyncio
+from typing import Any
+
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 
+from data_engine.fetch import fetch_history_candles
 from aggregation.candle_aggregator import validate_candle
 from ai_assistant import analyze_market
 from ai_trade_assistant import compute_entry_sl_tp
-from connectors.binance import BinanceConnector
+from connectors.binance import BinanceConnector, to_binance_symbol
 from dependencies import dependency_manager
-from instruments.registry import get_all as get_all_instruments, search as search_instruments, get_by_market, get_market_types, get_sources
+from instruments.registry import get_all as get_all_instruments, search as search_instruments, get_by_market, get_market_types, get_sources, get_by_symbol
 from storage.database import get_db
 from storage.models import Alert, Drawing, Layout, Watchlist, TradeJournal
 from utils.mock_data import generate_candles
 from analytics.footprint import build_footprint, calculate_delta, cumulative_delta
 from analytics.vpvr import compute_vpvr
 from execution.paper_trading import PaperTradingEngine, OrderSide, OrderType
+from execution.live_trading import LiveTradingEngine
+from execution.backtest import run_backtest
 
 logger = structlog.get_logger()
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# In-memory TTL cache for historical data endpoints
+# ---------------------------------------------------------------------------
+import time as _time
+
+class TTLCache:
+    """Simple in-memory cache with per-key TTL (seconds)."""
+    def __init__(self) -> None:
+        self._data: dict[str, tuple[float, Any]] = {}
+
+    def get(self, key: str) -> Any | None:
+        entry = self._data.get(key)
+        if entry is None:
+            return None
+        expires_at, value = entry
+        if _time.monotonic() > expires_at:
+            del self._data[key]
+            return None
+        return value
+
+    def set(self, key: str, value: Any, ttl: float) -> None:
+        self._data[key] = (_time.monotonic() + ttl, value)
+
+    def invalidate(self, key: str) -> None:
+        self._data.pop(key, None)
+
+
+_history_cache = TTLCache()
+
+# How long to cache based on interval — shorter TTL for fast timeframes
+_INTERVAL_CACHE_TTL: dict[str, float] = {
+    "1m": 15.0,
+    "5m": 60.0,
+    "15m": 120.0,
+    "30m": 180.0,
+    "1h": 300.0,
+    "4h": 600.0,
+    "1d": 3600.0,
+    "1w": 7200.0,
+}
+
+
+def _cache_key(symbol: str, interval: str, limit: int) -> str:
+    return f"history:{symbol}:{interval}:{limit}"
+
+
+# ---------------------------------------------------------------------------
 
 
 @router.get("/health")
@@ -26,78 +81,34 @@ async def health():
 @router.get("/history")
 async def get_history(symbol: str, interval: str = "1m", limit: int = 500, request: Request = None):
     sym = symbol.upper()
+    capped = min(limit, 1000)
+    ck = _cache_key(sym, interval, capped)
 
-    # Helper: validate and flag candles
-    def _validate(candles: list[dict]) -> list[dict]:
-        validated = []
-        for c in candles:
-            c["interval"] = interval
-            c["symbol"] = sym
-            errs = validate_candle(c)
-            if errs:
-                logger.warning("history_candle_invalid", symbol=sym, interval=interval,
-                               time=c.get("time"), errors=errs)
-                continue
-            validated.append(c)
-        return validated
+    # Check cache first (stale-while-revalidate: return cached immediately)
+    cached = _history_cache.get(ck)
+    if cached is not None:
+        # Fire-and-forget refresh in background
+        asyncio.create_task(_refresh_history_cache(ck, sym, interval, capped, request))
+        return cached
 
-    # Prefer MT5 for mt5-sourced symbols
-    mt5_inst = getattr(request.app.state, "mt5_bridge", None) if request else None
-    if mt5_inst:
-        mt5_candles = await mt5_inst.get_history(sym, interval, min(limit, 500))
-        if mt5_candles:
-            validated = _validate(mt5_candles)
-            if validated:
-                return {"symbol": sym, "interval": interval, "candles": validated, "source": "mt5"}
-            logger.warning("mt5_history_all_invalid", symbol=sym, interval=interval)
+    mt5_bridge = getattr(request.app.state, "mt5_bridge", None) if request else None
+    candles, source = await fetch_history_candles(sym, interval, capped, mt5_bridge)
+    result = {"symbol": sym, "interval": interval, "candles": candles, "source": source}
+    ttl = _INTERVAL_CACHE_TTL.get(interval, 30.0)
+    _history_cache.set(ck, result, ttl)
+    return result
 
-    # Fallback to Binance
-    bc = BinanceConnector()
+
+async def _refresh_history_cache(ck: str, sym: str, interval: str, limit: int, request: Request) -> None:
+    """Background refresh — silently update the cache."""
     try:
-        candles = await bc.get_klines(sym, interval, limit)
-        validated = _validate(candles)
-        if validated:
-            return {"symbol": sym, "interval": interval, "candles": validated, "source": "binance"}
-    except Exception as exc:
-        logger.warning("binance_history_fallback", symbol=sym, error=str(exc))
-    finally:
-        await bc.close()
-
-    # Fallback: aggregate higher TF from MT5 1m candles
-    if mt5_inst and interval != "1m":
-        try:
-            mt5_1m = await mt5_inst.get_history(sym, "1m", min(limit * 2, 1000))
-            if mt5_1m:
-                from aggregation.candle_aggregator import INTERVAL_SECONDS, align_timestamp
-                target_sec = INTERVAL_SECONDS.get(interval, 3600)
-                agg: dict[int, dict] = {}
-                for c in sorted(mt5_1m, key=lambda x: x.get("time", 0)):
-                    bucket = align_timestamp(c["time"], target_sec)
-                    if bucket in agg:
-                        e = agg[bucket]
-                        e["high"] = max(e["high"], c["high"])
-                        e["low"] = min(e["low"], c["low"])
-                        e["close"] = c["close"]
-                        e["volume"] += c.get("volume", 0)
-                    else:
-                        agg[bucket] = {
-                            "time": bucket,
-                            "open": c["open"],
-                            "high": c["high"],
-                            "low": c["low"],
-                            "close": c["close"],
-                            "volume": c.get("volume", 0),
-                        }
-                aggregated = list(agg.values())
-                validated = _validate(aggregated)
-                if validated:
-                    return {"symbol": sym, "interval": interval, "candles": validated[-limit:], "source": "mt5_agg"}
-        except Exception as exc:
-            logger.warning("mt5_aggregation_fallback_failed", symbol=sym, error=str(exc))
-
-    # Ultimate fallback: mock data
-    candles = generate_candles(sym, interval, min(limit, 1000))
-    return {"symbol": sym, "interval": interval, "candles": candles, "source": "mock"}
+        mt5_bridge = getattr(request.app.state, "mt5_bridge", None) if request else None
+        candles, source = await fetch_history_candles(sym, interval, limit, mt5_bridge)
+        result = {"symbol": sym, "interval": interval, "candles": candles, "source": source}
+        ttl = _INTERVAL_CACHE_TTL.get(interval, 30.0)
+        _history_cache.set(ck, result, ttl)
+    except Exception:
+        pass  # Keep stale cache alive
 
 
 @router.get("/footprint")
@@ -259,21 +270,22 @@ async def check_feature(feature: str):
 # --- AI Assistant ---
 
 @router.get("/ai/analyze")
-async def ai_analyze(symbol: str, interval: str = "1h"):
-    bc = BinanceConnector()
+async def ai_analyze(symbol: str, interval: str = "1h", request: Request = None):
+    sym = symbol.upper()
+    mt5_bridge = getattr(request.app.state, "mt5_bridge", None) if request else None
     try:
-        candles = await bc.get_klines(symbol, interval, 100)
+        # Use the smart fallback chain (MT5 → Binance → mock)
+        candles, source = await fetch_history_candles(sym, interval, 100, mt5_bridge)
         if candles:
-            result = analyze_market(candles, symbol)
-            result["symbol"] = symbol
+            result = analyze_market(candles, sym)
+            result["symbol"] = sym
             result["interval"] = interval
+            result["source"] = source
             return result
-        return {"summary": f"No data for {symbol}.", "signals": [], "risk": "unknown"}
+        return {"summary": f"No data for {sym}.", "signals": [], "risk": "unknown"}
     except Exception as exc:
-        logger.warning("ai_analysis_failed", symbol=symbol, error=str(exc))
-        return {"summary": f"Unable to analyze {symbol}.", "signals": [], "risk": "unknown", "error": str(exc)}
-    finally:
-        await bc.close()
+        logger.warning("ai_analysis_failed", symbol=sym, error=str(exc))
+        return {"summary": f"Unable to analyze {sym}.", "signals": [], "risk": "unknown", "error": str(exc)}
 
 
 # --- Countdown ---
@@ -340,21 +352,21 @@ async def delete_journal_entry(trade_id: int, db=Depends(get_db)):
 # --- AI Trade Assistant ---
 
 @router.get("/ai/trade-setup")
-async def ai_trade_setup(symbol: str, interval: str = "1h"):
-    bc = BinanceConnector()
+async def ai_trade_setup(symbol: str, interval: str = "1h", request: Request = None):
+    sym = symbol.upper()
+    mt5_bridge = getattr(request.app.state, "mt5_bridge", None) if request else None
     try:
-        candles = await bc.get_klines(symbol, interval, 100)
+        # Use the smart fallback chain (MT5 → Binance → mock)
+        candles, source = await fetch_history_candles(sym, interval, 100, mt5_bridge)
         if not candles:
-            # Fallback: try MT5
-            return {"summary": f"No data for {symbol}.", "signals": [], "entry": None, "stop_loss": None, "take_profit": None, "confidence": 0, "direction": "neutral", "rr": None}
-        result = compute_entry_sl_tp(candles, symbol)
-        result["symbol"] = symbol
+            return {"summary": f"No data for {sym}.", "signals": [], "entry": None, "stop_loss": None, "take_profit": None, "confidence": 0, "direction": "neutral", "rr": None}
+        result = compute_entry_sl_tp(candles, sym)
+        result["symbol"] = sym
+        result["source"] = source
         return result
     except Exception as exc:
-        logger.warning("ai_trade_setup_failed", symbol=symbol, error=str(exc))
-        return {"summary": f"Unable to analyze {symbol}.", "signals": [], "entry": None, "stop_loss": None, "take_profit": None, "confidence": 0, "direction": "neutral", "rr": None, "error": str(exc)}
-    finally:
-        await bc.close()
+        logger.warning("ai_trade_setup_failed", symbol=sym, error=str(exc))
+        return {"summary": f"Unable to analyze {sym}.", "signals": [], "entry": None, "stop_loss": None, "take_profit": None, "confidence": 0, "direction": "neutral", "rr": None, "error": str(exc)}
 
 
 @router.post("/journal/from-setup")
@@ -400,7 +412,11 @@ async def upload_screenshot(file: UploadFile = None, trade_id: int | None = None
 
 @router.get("/screenshots/{filename}")
 async def get_screenshot(filename: str):
-    filepath = SCREENSHOT_DIR / filename
+    # Sanitize filename to prevent path traversal attacks
+    safe_name = Path(filename).name
+    if not safe_name or safe_name != filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    filepath = SCREENSHOT_DIR / safe_name
     if not filepath.exists():
         raise HTTPException(status_code=404, detail="Screenshot not found")
     from fastapi.responses import FileResponse
@@ -575,6 +591,125 @@ async def paper_update_settings(
     return result
 
 
+# --- Live MT5 Trading ---
+
+
+@router.get("/live/status")
+async def live_status(request: Request):
+    """Get live trading engine status (enabled, bridge connected, risk params)."""
+    live: LiveTradingEngine | None = getattr(request.app.state, "live_trading", None)
+    if not live:
+        return {"enabled": False, "bridge_connected": False, "error": "Live trading engine not available"}
+    return live.status()
+
+
+@router.post("/live/enable")
+async def live_enable(enabled: bool = True, request: Request = None):
+    """Enable or disable live MT5 trading."""
+    live: LiveTradingEngine | None = getattr(request.app.state, "live_trading", None)
+    if not live:
+        raise HTTPException(status_code=503, detail="Live trading engine not available")
+    live.set_enabled(enabled)
+    return {"ok": True, **live.status()}
+
+
+@router.post("/live/orders")
+async def live_create_order(
+    symbol: str,
+    side: str,
+    volume: float,
+    price: float | None = None,
+    sl: float | None = None,
+    tp: float | None = None,
+    deviation: int = 10,
+    comment: str = "aegis_manual",
+    request: Request = None,
+):
+    """Send a live market order. WARNING: This executes a real trade if enabled!"""
+    live: LiveTradingEngine | None = getattr(request.app.state, "live_trading", None)
+    if not live:
+        raise HTTPException(status_code=503, detail="Live trading engine not available")
+    result = await live.send_market_order(
+        symbol=symbol, side=side, volume=volume,
+        price=price, sl=sl, tp=tp,
+        deviation=deviation, comment=comment,
+        reason="manual_rest",
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/live/close")
+async def live_close(
+    symbol: str,
+    volume: float,
+    price: float,
+    deviation: int = 10,
+    request: Request = None,
+):
+    """Close an MT5 position by opposite market order."""
+    live: LiveTradingEngine | None = getattr(request.app.state, "live_trading", None)
+    if not live:
+        raise HTTPException(status_code=503, detail="Live trading engine not available")
+    result = await live.close_market_position(
+        symbol=symbol, volume=volume, price=price,
+        deviation=deviation, reason="manual_rest",
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.get("/live/positions")
+async def live_positions(request: Request):
+    """Get current MT5 positions."""
+    live: LiveTradingEngine | None = getattr(request.app.state, "live_trading", None)
+    if not live:
+        return {"positions": [], "error": "Live trading engine not available"}
+    positions = await live.sync_positions()
+    return {"positions": positions, "count": len(positions)}
+
+
+@router.get("/live/account")
+async def live_account(request: Request):
+    """Get MT5 account info (balance, equity, margin)."""
+    live: LiveTradingEngine | None = getattr(request.app.state, "live_trading", None)
+    if not live:
+        return {"error": "Live trading engine not available"}
+    info = await live.get_account_info()
+    return info
+
+
+@router.get("/live/risk-params")
+async def live_risk_params(request: Request):
+    """Get live trading risk parameters."""
+    live: LiveTradingEngine | None = getattr(request.app.state, "live_trading", None)
+    if not live:
+        return {"error": "Live trading engine not available"}
+    return live.risk_params
+
+
+@router.post("/live/risk-params")
+async def live_update_risk_params(data: dict, request: Request = None):
+    """Update live trading risk parameters."""
+    live: LiveTradingEngine | None = getattr(request.app.state, "live_trading", None)
+    if not live:
+        raise HTTPException(status_code=503, detail="Live trading engine not available")
+    live.set_risk_params(data)
+    return {"ok": True, **live.risk_params}
+
+
+@router.post("/live/reset-daily")
+async def live_reset_daily(request: Request = None):
+    """Reset daily trade count and risk P&L."""
+    live: LiveTradingEngine | None = getattr(request.app.state, "live_trading", None)
+    if not live:
+        raise HTTPException(status_code=503, detail="Live trading engine not available")
+    live.reset_daily()
+    return {"ok": True}
+
+
 @router.post("/paper/reset")
 async def paper_reset(db=Depends(get_db), request: Request = None):
     """Reset paper trading account and clear all positions/orders."""
@@ -583,6 +718,73 @@ async def paper_reset(db=Depends(get_db), request: Request = None):
         raise HTTPException(status_code=503, detail="Paper trading engine not available")
     await engine.reset(db=db)
     return {"ok": True, **engine.stats}
+
+
+# --- Bots ---
+
+
+@router.get("/bots")
+async def list_bots(request: Request):
+    """List all trading bots."""
+    orchestrator = getattr(request.app.state, "bot_orchestrator", None)
+    if not orchestrator:
+        return {"bots": [], "error": "Bot orchestrator not available"}
+    return {"bots": orchestrator.list_bots()}
+
+
+@router.post("/bots")
+async def create_bot(data: dict, request: Request = None):
+    """Create a new trading bot."""
+    orchestrator = getattr(request.app.state, "bot_orchestrator", None)
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Bot orchestrator not available")
+    try:
+        data["enabled"] = data.get("enabled", True)
+        bot = orchestrator.add_bot(data)
+        return {"ok": True, "bot": bot.to_dict()}
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.delete("/bots/{bot_name}")
+async def delete_bot(bot_name: str, request: Request = None):
+    """Remove a trading bot."""
+    orchestrator = getattr(request.app.state, "bot_orchestrator", None)
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Bot orchestrator not available")
+    if not orchestrator.remove_bot(bot_name):
+        raise HTTPException(status_code=404, detail=f"Bot '{bot_name}' not found")
+    return {"ok": True}
+
+
+@router.post("/bots/{bot_name}/toggle")
+async def toggle_bot(bot_name: str, request: Request = None):
+    """Toggle a bot's enabled/disabled state."""
+    orchestrator = getattr(request.app.state, "bot_orchestrator", None)
+    if not orchestrator:
+        raise HTTPException(status_code=503, detail="Bot orchestrator not available")
+    bot = orchestrator.toggle_bot(bot_name)
+    if not bot:
+        raise HTTPException(status_code=404, detail=f"Bot '{bot_name}' not found")
+    return {"ok": True, "enabled": bot.enabled}
+
+
+# --- Backtest ---
+
+
+@router.post("/backtest")
+async def backtest(data: dict, request: Request = None):
+    """Run a backtest for a bot configuration against historical data.
+
+    Accepts the same config schema as ``POST /api/bots`` plus:
+    - initial_capital (float, default 10_000)
+    - limit (int, default 500, max 1000)
+
+    Returns comprehensive metrics including equity curve and trade list.
+    """
+    mt5_bridge = getattr(request.app.state, "mt5_bridge", None) if request else None
+    result = await run_backtest(data, mt5_bridge=mt5_bridge)
+    return result
 
 
 # --- Replay ---

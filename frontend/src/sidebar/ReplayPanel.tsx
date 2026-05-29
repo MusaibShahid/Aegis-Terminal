@@ -48,7 +48,7 @@ export function ReplayPanel() {
       {/* Playback controls */}
       <div className="glass-card rounded-lg p-2.5 space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-[9px] text-gray-600 uppercase tracking-wider font-semibold">Playback</span>
+          <span className="text-[9px] text-text-muted uppercase tracking-wider font-semibold">Playback</span>
           <div className="flex items-center gap-1">
             {[0.5, 1, 2, 5, 10].map((s) => (
               <button
@@ -56,7 +56,7 @@ export function ReplayPanel() {
                 className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
                   speed === s
                     ? "bg-accent-blue/15 text-accent-blue"
-                    : "text-gray-600 hover:text-white hover:bg-glass-white-hover"
+                    : "text-text-muted hover:text-text-primary hover:bg-surface-hover"
                 }`}
                 onClick={() => setSpeed(s)}
               >
@@ -74,7 +74,7 @@ export function ReplayPanel() {
               style={{ width: `${progress}%` }}
             />
           </div>
-          <div className="flex justify-between text-[9px] text-gray-600 font-mono">
+          <div className="flex justify-between text-[9px] text-text-muted font-mono">
             <span>Candle {currentIndex}/{totalCandles}</span>
             <span>{progress.toFixed(0)}%</span>
           </div>
@@ -82,7 +82,7 @@ export function ReplayPanel() {
       </div>
 
       {!isPlaying && totalCandles === 0 && (
-        <div className="flex flex-col items-center justify-center flex-1 text-gray-600 gap-2">
+        <div className="flex flex-col items-center justify-center flex-1 text-text-muted gap-2">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="opacity-40">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>

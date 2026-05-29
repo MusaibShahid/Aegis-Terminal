@@ -4,8 +4,8 @@ import { useJournalStore } from "../useJournalStore";
 import type { JournalEntry } from "../useJournalStore";
 
 const mockEntries: JournalEntry[] = [
-  { id: 1, symbol: "BTCUSDT", side: "long", entry_price: 50000, quantity: 0.1, status: "open", opened_at: "2024-01-01T00:00:00Z" },
-  { id: 2, symbol: "ETHUSDT", side: "short", entry_price: 3000, quantity: 1, status: "closed", exit_price: 2900, pnl: 100, pnl_pct: 3.33, closed_at: "2024-01-02T00:00:00Z" },
+  { id: 1, symbol: "BTCUSDT", side: "long", entry_price: 50000, quantity: 0.1, status: "open", tags: [], notes: "", opened_at: "2024-01-01T00:00:00Z", created_at: 1704067200000 },
+  { id: 2, symbol: "ETHUSDT", side: "short", entry_price: 3000, quantity: 1, status: "closed", exit_price: 2900, pnl: 100, pnl_pct: 3.33, tags: [], notes: "", closed_at: "2024-01-02T00:00:00Z", created_at: 1704153600000 },
 ];
 
 const mockStats = { total: 2, wins: 1, losses: 1, total_pnl: 100, avg_pnl: 50, win_rate: 50 };
@@ -74,7 +74,7 @@ describe("useJournalStore", () => {
 
   describe("createEntry", () => {
     it("creates entry and prepends to list", async () => {
-      const newEntry: JournalEntry = { id: 3, symbol: "SOLUSDT", side: "long", entry_price: 150, quantity: 10, status: "open" };
+      const newEntry: JournalEntry = { id: 3, symbol: "SOLUSDT", side: "long", entry_price: 150, quantity: 10, status: "open", tags: [], notes: "", created_at: 1704240000000 };
       vi.stubGlobal("fetch", vi.fn()
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(newEntry) })
         .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(mockStats) }));

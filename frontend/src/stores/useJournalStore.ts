@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 export interface JournalEntry {
-  id?: number;
+  id: number;
   symbol: string;
   side: "long" | "short";
   entry_price: number;
@@ -13,10 +13,11 @@ export interface JournalEntry {
   exit_reason?: string | null;
   pnl?: number | null;
   pnl_pct?: number | null;
-  tags?: string | null;
-  notes?: string | null;
+  tags: string[];
+  notes: string;
   screenshot_path?: string | null;
   status: "open" | "closed" | "cancelled";
+  created_at: number;
   opened_at?: string | null;
   closed_at?: string | null;
 }
@@ -38,6 +39,7 @@ interface JournalState {
   fetchEntries: () => Promise<void>;
   fetchStats: () => Promise<void>;
   createEntry: (data: Partial<JournalEntry>) => Promise<JournalEntry | null>;
+  addEntry: (entry: { symbol?: string; notes: string; tags: string[] }) => void;
   updateEntry: (id: number, data: Partial<JournalEntry>) => Promise<void>;
   deleteEntry: (id: number) => Promise<void>;
 }
@@ -85,6 +87,21 @@ export const useJournalStore = create<JournalState>((set, get) => ({
       set({ error: e.message });
       return null;
     }
+  },
+
+  addEntry: (entry) => {
+    const newEntry: JournalEntry = {
+      id: Date.now(),
+      symbol: entry.symbol || "",
+      side: "long",
+      entry_price: 0,
+      quantity: 0,
+      tags: entry.tags,
+      notes: entry.notes,
+      status: "open",
+      created_at: Date.now(),
+    };
+    set((s) => ({ entries: [newEntry, ...s.entries] }));
   },
 
   updateEntry: async (id, data) => {

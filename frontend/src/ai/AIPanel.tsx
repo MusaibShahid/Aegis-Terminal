@@ -51,12 +51,12 @@ export function AIPanel() {
 
   if (!isReady) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-500 p-4">
+      <div className="flex flex-col items-center justify-center h-full text-text-tertiary p-4">
         <svg className="w-10 h-10 mb-2 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
         </svg>
         <div className="text-xs">AI Assistant Unavailable</div>
-        <div className="text-[9px] text-gray-600 mt-1">Backend AI service not connected</div>
+        <div className="text-[9px] text-text-muted mt-1">Backend AI service not connected</div>
       </div>
     );
   }
@@ -64,18 +64,18 @@ export function AIPanel() {
   return (
     <div className="flex flex-col h-full text-xs">
       {/* Header */}
-      <div className="px-3 py-2.5 border-b border-white/5 shrink-0 bg-gradient-to-r from-accent-blue/[0.03] to-transparent">
+      <div className="px-3 py-2.5 border-b border-surface-border shrink-0 bg-gradient-to-r from-accent-blue/[0.03] to-transparent">
         <div className="flex gap-1.5">
           <div className="relative flex-1">
             <input
-              className="w-full bg-[#1a1d2e] border border-white/10 rounded-lg pl-2.5 pr-2 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-accent-blue/50 transition-colors uppercase tracking-wider"
+              className="w-full bg-surface-input border border-surface-border rounded-lg pl-2.5 pr-2 py-1.5 text-xs text-text-primary placeholder-text-muted focus:outline-none focus:border-accent-blue/50 transition-colors uppercase tracking-wider"
               value={symbol}
               onChange={(e) => setSymbol(e.target.value.toUpperCase())}
               placeholder="SYMBOL"
             />
           </div>
           <select
-            className="bg-[#1a1d2e] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:border-accent-blue/50 transition-colors"
+            className="bg-surface-input border border-surface-border rounded-lg px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-accent-blue/50 transition-colors"
             value={interval}
             onChange={(e) => setInterval(e.target.value)}
           >
@@ -114,12 +114,12 @@ export function AIPanel() {
             {/* Metrics Cards */}
             <div className="grid grid-cols-3 gap-1.5">
               {[
-                { label: "Trend", value: result.trend, color: result.trend === "uptrend" ? "text-accent-green" : result.trend === "downtrend" ? "text-accent-red" : "text-gray-400" },
-                { label: "RSI", value: result.rsi, color: result.rsi > 70 ? "text-accent-red" : result.rsi < 30 ? "text-accent-green" : "text-white" },
+                { label: "Trend", value: result.trend, color: result.trend === "uptrend" ? "text-accent-green" : result.trend === "downtrend" ? "text-accent-red" : "text-text-secondary" },
+                { label: "RSI", value: result.rsi, color: result.rsi > 70 ? "text-accent-red" : result.rsi < 30 ? "text-accent-green" : "text-text-primary" },
                 { label: "Change", value: `${result.change_pct >= 0 ? "+" : ""}${result.change_pct}%`, color: result.change_pct >= 0 ? "text-accent-green" : "text-accent-red" },
               ].map((m) => (
                 <div key={m.label} className="glass-card rounded-lg p-2.5 text-center">
-                  <div className="text-gray-500 text-[9px] uppercase tracking-widest mb-0.5">{m.label}</div>
+                  <div className="text-text-tertiary text-[9px] uppercase tracking-widest mb-0.5">{m.label}</div>
                   <div className={`font-mono text-sm font-bold ${m.color}`}>
                     {typeof m.value === "number" ? m.value.toFixed(1) : m.value}
                   </div>
@@ -129,7 +129,7 @@ export function AIPanel() {
 
             {/* Summary */}
             {result.summary && (
-              <div className="glass-card rounded-lg p-2.5 text-[10px] text-gray-300 leading-relaxed">
+              <div className="glass-card rounded-lg p-2.5 text-[10px] text-text-primary leading-relaxed">
                 {result.summary}
               </div>
             )}
@@ -157,12 +157,12 @@ export function AIPanel() {
         )}
 
         {chat.length === 0 && !loading && !error && (
-          <div className="flex flex-col items-center justify-center py-10 text-gray-500">
+          <div className="flex flex-col items-center justify-center py-10 text-text-tertiary">
             <svg className="w-12 h-12 mb-3 opacity-20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
             <span className="text-xs">Enter a symbol and click Analyze for AI insights</span>
-            <span className="text-[9px] text-gray-600 mt-1">Multi-timeframe analysis with trend, RSI, and volatility</span>
+            <span className="text-[9px] text-text-muted mt-1">Multi-timeframe analysis with trend, RSI, and volatility</span>
           </div>
         )}
       </div>
